@@ -13,5 +13,15 @@ export type {
   ScreenDefinition,
   ActionDefinition,
   UIProvider,
-  RuntimeContext
+  RuntimeContext,
+  Logger
+} from './types.js';
+
+export {
+  ConsoleLogger,
+  ValidationError,
+  DuplicateRegistrationError,
+  ActionTimeoutError,
+  ActionExecutionError,
+  RuntimeState
 } from './types.js';
