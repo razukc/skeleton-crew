@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Logical Git Commits",
+  "description": "Automatically analyzes file changes and creates logical, well-structured Git commits with meaningful commit messages based on the changes made",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Analyze the recent file changes and create a logical Git commit. Follow these steps:\n\n1. Review the git diff to understand what changed\n2. Group related changes together logically\n3. Create a clear, descriptive commit message following conventional commit format (e.g., \"feat:\", \"fix:\", \"refactor:\", \"test:\", \"docs:\", \"chore:\")\n4. Stage the appropriate files with `git add`\n5. Create the commit with `git commit -m \"message\"`\n\nGuidelines:\n- Use conventional commit prefixes (feat, fix, refactor, test, docs, chore, style, perf)\n- Keep commit messages concise but descriptive\n- Focus on the \"what\" and \"why\", not the \"how\"\n- If multiple unrelated changes exist, create separate commits\n- Include scope in parentheses when relevant (e.g., \"feat(plugin-registry): add new method\")\n\nExecute the git commands to stage and commit the changes."
+  }
+}
