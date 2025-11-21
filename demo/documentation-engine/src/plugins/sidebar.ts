@@ -85,7 +85,7 @@ function buildNavigationTree(
   }
 
   // Second pass: Build hierarchy based on path structure
-  for (const [id, item] of flat.entries()) {
+  for (const [_id, item] of flat.entries()) {
     // Split path into segments (e.g., '/guides/plugins' -> ['guides', 'plugins'])
     const segments = item.path
       .split('/')
@@ -202,7 +202,7 @@ export function createSidebarPlugin(): PluginDefinition {
 
       // Listen to markdown:page-registered events to update navigation
       // @see Requirements 3.1, 3.2
-      context.events.on('markdown:page-registered', (data: any) => {
+      context.events.on('markdown:page-registered', (_data: any) => {
         rebuildNavigationTree();
       });
 

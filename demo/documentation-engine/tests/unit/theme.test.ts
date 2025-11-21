@@ -26,15 +26,13 @@ function createMockContext(): RuntimeContext {
         actions.set(action.id, action);
         return () => {};
       },
-      getAction: (id: string) => actions.get(id),
-      executeAction: async (id: string, params: any) => {
+      runAction: async <P = unknown, R = unknown>(id: string, params?: P): Promise<R> => {
         const action = actions.get(id);
         if (!action) {
           throw new Error(`Action ${id} not found`);
         }
         return action.handler(params);
-      },
-      runAction: async <R>(): Promise<R> => undefined as R
+      }
     },
     plugins: {
       registerPlugin: () => {},
@@ -186,38 +184,39 @@ describe('Theme Plugin', () => {
   });
 
   describe('Theme Actions', () => {
-    it('should register theme:toggle action', () => {
-      const action = context.actions.getAction('theme:toggle');
-      expect(action).toBeDefined();
+    it('should register theme:toggle action', async () => {
+      // Verify action is registered by attempting to execute it
+      const result = await context.actions.runAction<{}, { theme: string }>('theme:toggle', {});
+      expect(result).toBeDefined();
     });
 
-    it('should register theme:set action', () => {
-      const action = context.actions.getAction('theme:set');
-      expect(action).toBeDefined();
+    it('should register theme:set action', async () => {
+      // Verify action is registered by attempting to execute it
+      const result = await context.actions.runAction<{ theme: string }, { theme: string }>('theme:set', { theme: 'dark' });
+      expect(result).toBeDefined();
     });
 
     it('should toggle theme via action', async () => {
-      const result = await context.actions.executeAction('theme:toggle', {});
+      const result = await context.actions.runAction<{}, { theme: string }>('theme:toggle', {});
       expect(result.theme).toBe('dark');
       expect(context.theme.getCurrentTheme()).toBe('dark');
     });
 
     it('should set theme via action', async () => {
-      const result = await context.actions.executeAction('theme:set', { theme: 'dark' });
+      const result = await context.actions.runAction<{ theme: string }, { theme: string }>('theme:set', { theme: 'dark' });
       expect(result.theme).toBe('dark');
       expect(context.theme.getCurrentTheme()).toBe('dark');
     });
 
     it('should throw error when theme:set called without theme parameter', async () => {
       await expect(
-        context.actions.executeAction('theme:set', {})
+        context.actions.runAction('theme:set', {})
       ).rejects.toThrow('theme:set action requires a theme parameter');
     });
 
     it('should throw error when theme:set called with invalid theme', async () => {
       await expect(
-        // @ts-expect-error - Testing invalid input
-        context.actions.executeAction('theme:set', { theme: 'invalid' })
+        context.actions.runAction('theme:set', { theme: 'invalid' })
       ).rejects.toThrow('Invalid theme');
     });
   });
@@ -227,7 +226,7 @@ describe('Theme Plugin', () => {
       const eventSpy = vi.fn();
       context.events.on('theme:changed', eventSpy);
 
-      await context.actions.executeAction('theme:toggle', {});
+      await context.actions.runAction('theme:toggle', {});
 
       expect(eventSpy).toHaveBeenCalledWith({ theme: 'dark' });
     });
@@ -236,7 +235,7 @@ describe('Theme Plugin', () => {
       const eventSpy = vi.fn();
       context.events.on('theme:changed', eventSpy);
 
-      await context.actions.executeAction('theme:set', { theme: 'dark' });
+      await context.actions.runAction('theme:set', { theme: 'dark' });
 
       expect(eventSpy).toHaveBeenCalledWith({ theme: 'dark' });
     });
@@ -246,11 +245,11 @@ describe('Theme Plugin', () => {
       context.events.on('theme:changed', eventSpy);
 
       // Toggle to dark
-      await context.actions.executeAction('theme:toggle', {});
+      await context.actions.runAction('theme:toggle', {});
       expect(eventSpy).toHaveBeenCalledWith({ theme: 'dark' });
 
       // Toggle back to light
-      await context.actions.executeAction('theme:toggle', {});
+      await context.actions.runAction('theme:toggle', {});
       expect(eventSpy).toHaveBeenCalledWith({ theme: 'light' });
     });
   });
