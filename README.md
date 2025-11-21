@@ -342,38 +342,45 @@ my-app/
 
 ## API Reference
 
-### Runtime
+For complete API documentation including all TypeScript interfaces, classes, methods, and types, see [API.md](API.md).
 
+### Quick Reference
+
+**Runtime:**
 ```typescript
-const runtime = new Runtime(config?: RuntimeConfig);
+const runtime = new Runtime(options?: { logger?: Logger });
 await runtime.initialize();
 runtime.setUIProvider(provider: UIProvider);
 runtime.renderScreen(screenId: string);
 runtime.getContext(): RuntimeContext;
-await runtime.dispose();
+runtime.isInitialized(): boolean;
+runtime.getState(): RuntimeState;
+await runtime.shutdown();
 ```
 
-### RuntimeContext
-
+**RuntimeContext:**
 ```typescript
 const ctx = runtime.getContext();
 
-// Plugin management
-await ctx.plugins.registerPlugin(plugin: PluginDefinition);
-ctx.plugins.getPlugin(name: string): PluginDefinition | undefined;
+// Screens
+ctx.screens.registerScreen(screen: ScreenDefinition): () => void;
+ctx.screens.getScreen(id: string): ScreenDefinition | null;
+ctx.screens.getAllScreens(): ScreenDefinition[];
 
-// Screen management
-ctx.screens.registerScreen(screen: ScreenDefinition);
-ctx.screens.getScreen(id: string): ScreenDefinition | undefined;
+// Actions
+ctx.actions.registerAction<P, R>(action: ActionDefinition<P, R>): () => void;
+ctx.actions.runAction<P, R>(id: string, params?: P): Promise<R>;
 
-// Action management
-ctx.actions.registerAction(action: ActionDefinition);
-await ctx.actions.executeAction(id: string, params?: any);
+// Plugins
+ctx.plugins.registerPlugin(plugin: PluginDefinition): void;
+ctx.plugins.getPlugin(name: string): PluginDefinition | null;
+ctx.plugins.getAllPlugins(): PluginDefinition[];
+ctx.plugins.getInitializedPlugins(): string[];
 
-// Event management
-ctx.events.on(event: string, handler: EventHandler);
-ctx.events.emit(event: string, data?: any);
-ctx.events.off(event: string, handler: EventHandler);
+// Events
+ctx.events.emit(event: string, data?: unknown): void;
+ctx.events.emitAsync(event: string, data?: unknown): Promise<void>;
+ctx.events.on(event: string, handler: (data: unknown) => void): () => void;
 ```
 
 ## What Skeleton Crew Is NOT
@@ -431,7 +438,7 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Please read the contributing guidelines before submitting PRs.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to get started.
 
 ---
 
