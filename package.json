@@ -1,7 +1,7 @@
 {
-  "name": "skeleton-crew-runtime",
+  "name": "skeleton-crew",
   "version": "0.1.0",
-  "description": "A minimal, plugin-based application runtime",
+  "description": "A minimal, plugin-based application runtime for building internal tools and modular applications without UI framework lock-in.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,13 +17,24 @@
     "test:watch": "vitest",
     "example": "tsx example/index.ts"
   },
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "runtime",
     "plugin",
     "extensible"
   ],
-  "author": "",
+  "author": "Raju KC",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/razukc/skeleton-crew.git"
+  },
+  "homepage": "https://github.com/razukc/skeleton-crew#readme",
+  "bugs": {
+    "url": "https://github.com/razukc/skeleton-crew/issues"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "fast-check": "^4.3.0",
