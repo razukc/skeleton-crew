@@ -2,6 +2,7 @@
 
 A minimal, plugin-based application runtime for building internal tools and modular applications without UI framework lock-in.
 
+
 ## What is Skeleton Crew?
 
 Skeleton Crew is a tiny runtime that handles screens, actions, events, and plugins — **without enforcing how your app looks or behaves**. It's the "backend of your frontend" that lets you build plugin-driven apps with any UI framework (React, Vue, CLI, or none at all).
@@ -31,9 +32,91 @@ runtime.renderScreen("home");
 
 ## Why Skeleton Crew?
 
-**Most frameworks give you everything:** UI components, routing, state management, data fetching, and opinions about structure.
+Most frameworks give you a full stack, a default UI layer, opinions about structure, routing, state management, rendering, data fetching, and how you should build your app.
 
-**Skeleton Crew gives you structure without opinions:** You get a clean way to organize screens, actions, events, and plugins — then you choose your own UI layer.
+Skeleton Crew gives you **none of that** — on purpose.
+
+Instead, it gives you *just enough* structure to build:
+
+* Internal tools
+* Admin dashboards
+* Multi-screen apps
+* Plugin-based apps
+* Config-driven or dynamically-generated interfaces
+* Custom no-code/low-code platforms
+* Micro-tools built by teams
+* Multi UI framework apps
+
+The premise is simple:
+
+> **Skeleton Crew handles everything *except* the UI.**
+>
+> Plugins define screens, actions, events, and features.
+> The UI layer (React, Vue, Svelte, Solid, native, CLI, etc.) is plugged in separately and optional.
+
+This creates several benefits:
+
+---
+
+### **1. Your UI stack is *your choice***
+
+React? Vue? Solid? Vanilla HTML? Native mobile wrappers? All possible.
+
+Skeleton Crew doesn’t import any UI framework — the UI is a **plugin**, not part of the runtime.
+This gives you the same runtime across entirely different front-ends.
+
+---
+
+### **2. You can build real apps from simple blocks**
+
+Plugins can register:
+
+* Screens
+* Actions
+* Events
+* Their own sub-plugins
+* Feature bundles
+* UI providers
+* Business logic modules
+* Domain-driven “capabilities”
+
+This lets you grow your app like LEGO pieces.
+
+---
+
+### **3. Zero global state**
+
+Everything stays inside the runtime instance.
+You can spin up multiple runtimes in a single page — clean, isolated, easy to test.
+
+---
+
+### **4. A stable contract between the backend and the UI**
+
+Since the UI layer is optional and external:
+
+* You can generate screens dynamically
+* You can switch UI frameworks without rewriting logic
+* You can embed your app inside another app
+* You can even run the runtime in Node without DOM
+
+The runtime acts like the backend *of your frontend*.
+
+---
+
+### **5. It is perfect for internal tools, multi-screen dashboards, and plugins**
+
+You can do things that normal frameworks make painful:
+
+* Register screens based on user permissions
+* Hot-load plugins
+* Build custom “tiny apps” inside a bigger tool
+* Enable/disable features at runtime
+* Create reusable organizational toolkits
+
+Skeleton Crew is a **general-purpose runtime for assembling apps** — not a web UI framework.
+
+---
 
 ### Key Benefits
 
@@ -381,7 +464,7 @@ ctx.plugins.getInitializedPlugins(): string[];
 ctx.events.emit(event: string, data?: unknown): void;
 ctx.events.emitAsync(event: string, data?: unknown): Promise<void>;
 ctx.events.on(event: string, handler: (data: unknown) => void): () => void;
-```
+
 
 ## What Skeleton Crew Is NOT
 
