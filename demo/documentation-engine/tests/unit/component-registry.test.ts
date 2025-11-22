@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createComponentRegistryPlugin } from '../../src/plugins/component-registry.js';
-import type { RuntimeContext } from '../../../../dist/index.js';
+import type { RuntimeContext } from 'skeleton-crew-runtime';
 import type { ComponentType } from 'react';
 
 // Mock RuntimeContext for testing

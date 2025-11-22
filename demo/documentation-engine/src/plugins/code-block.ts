@@ -7,22 +7,16 @@
  * @see Requirements 5.1, 5.2, 5.3, 5.4, 5.5
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
-import { getHighlighter, type Highlighter, type Theme } from 'shiki';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 import type { ComponentType } from 'react';
 import type { RuntimeContextWithComponents } from './component-registry.js';
 import { CodeBlock } from '../components/CodeBlock.js';
+import { getHighlighter, type Highlighter, type Theme } from 'shiki';
 
 /**
  * Code block plugin interface
  */
 export interface CodeBlockPlugin {
-  /**
-   * Get the Shiki highlighter instance
-   * @returns Highlighter instance or null if not initialized
-   */
-  getHighlighter(): Highlighter | null;
-
   /**
    * Highlight code with the current theme
    * @param code - Code to highlight
@@ -68,13 +62,12 @@ const DARK_THEME: Theme = 'github-dark';
 export function createCodeBlockPlugin(): PluginDefinition {
   let highlighter: Highlighter | null = null;
   let currentTheme: 'light' | 'dark' = 'light';
+  
+  // Store unsubscribe function for cleanup
+  let unsubscribeThemeChanged: (() => void) | null = null;
 
   // Code block plugin implementation
   const codeBlockPlugin: CodeBlockPlugin = {
-    getHighlighter(): Highlighter | null {
-      return highlighter;
-    },
-
     highlight(code: string, language: string): string {
       if (!highlighter) {
         // Fallback if highlighter not initialized
@@ -146,15 +139,16 @@ export function createCodeBlockPlugin(): PluginDefinition {
           ]
         });
 
-        console.log('[code-block] Shiki highlighter initialized');
-      } catch (error) {
+        console.log('[code-block] Shiki highlighter initialized successfully');
+      } catch (error: any) {
         console.error('[code-block] Failed to initialize Shiki:', error);
+        console.error('[code-block] Error details:', error.message, error.stack);
         // Continue without highlighter - will use fallback
       }
 
       // Listen to theme:changed events to update syntax highlighting theme
       // @see Requirements 5.5
-      context.events.on('theme:changed', (data: any) => {
+      unsubscribeThemeChanged = context.events.on('theme:changed', (data: any) => {
         if (data && (data.theme === 'light' || data.theme === 'dark')) {
           codeBlockPlugin.setTheme(data.theme);
           console.log(`[code-block] Theme updated to ${data.theme}`);
@@ -175,6 +169,15 @@ export function createCodeBlockPlugin(): PluginDefinition {
       } else {
         console.warn('[code-block] Component registry not available, CodeBlock component not registered');
       }
+    },
+    dispose(): void {
+      // Clean up event listener
+      if (unsubscribeThemeChanged) unsubscribeThemeChanged();
+      
+      // Clean up highlighter
+      highlighter = null;
+      
+      console.log('[code-block] Plugin disposed');
     }
   };
 }

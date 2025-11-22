@@ -7,7 +7,7 @@
  * @see Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 11.4
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 
 /**
  * Theme type
@@ -144,6 +144,9 @@ export function createThemePlugin(): PluginDefinition {
   // Initialize theme from localStorage or system preference
   // @see Requirements 6.3, 6.5
   let currentTheme: Theme = loadTheme();
+  
+  // Store unregister functions for cleanup
+  const unregisterFunctions: Array<() => void> = [];
 
   // Theme plugin implementation
   const themePlugin: ThemePlugin = {
@@ -187,8 +190,9 @@ export function createThemePlugin(): PluginDefinition {
 
       // Register theme:toggle action
       // @see Requirements 6.1
-      context.actions.registerAction({
+      const unregisterToggle = context.actions.registerAction({
         id: 'theme:toggle',
+        timeout: 5000,
         handler: async () => {
           const newTheme = themePlugin.toggleTheme();
           
@@ -201,11 +205,13 @@ export function createThemePlugin(): PluginDefinition {
           return { theme: newTheme };
         }
       });
+      unregisterFunctions.push(unregisterToggle);
 
       // Register theme:set action
       // @see Requirements 6.1
-      context.actions.registerAction({
+      const unregisterSet = context.actions.registerAction({
         id: 'theme:set',
+        timeout: 5000,
         handler: async (params: { theme: Theme }) => {
           if (!params || !params.theme) {
             throw new Error('theme:set action requires a theme parameter');
@@ -228,8 +234,16 @@ export function createThemePlugin(): PluginDefinition {
           return { theme };
         }
       });
+      unregisterFunctions.push(unregisterSet);
 
       console.log('[theme] Actions registered: theme:toggle, theme:set');
+    },
+    dispose(): void {
+      // Unregister all actions
+      unregisterFunctions.forEach(fn => fn());
+      unregisterFunctions.length = 0;
+      
+      console.log('[theme] Plugin disposed');
     }
   };
 }

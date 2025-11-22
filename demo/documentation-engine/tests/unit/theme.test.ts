@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createThemePlugin, type RuntimeContextWithTheme } from '../../src/plugins/theme.js';
-import type { RuntimeContext } from '../../../../dist/index.js';
+import type { RuntimeContext } from 'skeleton-crew-runtime';
 
 // Mock RuntimeContext for testing
 function createMockContext(): RuntimeContext {

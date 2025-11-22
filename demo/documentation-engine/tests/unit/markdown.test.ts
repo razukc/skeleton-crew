@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Runtime } from '../../../../dist/index.js';
+import { Runtime } from 'skeleton-crew-runtime';
 import { createMarkdownPlugin } from '../../src/plugins/markdown.js';
 import type { RuntimeContextWithMarkdown } from '../../src/plugins/markdown.js';
 import * as fs from 'fs';

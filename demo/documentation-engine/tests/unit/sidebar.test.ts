@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createSidebarPlugin } from '../../src/plugins/sidebar.js';
-import type { RuntimeContext } from '../../../../dist/index.js';
+import type { RuntimeContext } from 'skeleton-crew-runtime';
 import type { ScreenMetadata } from '../../src/plugins/markdown.js';
 
 describe('Sidebar Plugin', () => {

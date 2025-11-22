@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Runtime } from '../../../../dist/index.js';
+import { Runtime } from 'skeleton-crew-runtime';
 import { createSearchPlugin } from '../../src/plugins/search.js';
 import type { RuntimeContextWithSearch, SearchResult } from '../../src/plugins/search.js';
 import type { ScreenMetadata } from '../../src/plugins/markdown.js';

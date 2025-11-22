@@ -7,7 +7,7 @@
  * @see Requirements 1.1, 1.2, 1.3, 1.4, 7.1, 11.1
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkFrontmatter from 'remark-frontmatter';

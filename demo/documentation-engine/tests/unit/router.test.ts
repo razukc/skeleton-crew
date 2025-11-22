@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createRouterPlugin, type RuntimeContextWithRouter } from '../../src/plugins/router.js';
-import type { RuntimeContext } from '../../../../dist/index.js';
+import type { RuntimeContext } from 'skeleton-crew-runtime';
 
 // Mock RuntimeContext for testing
 function createMockContext(): RuntimeContext {

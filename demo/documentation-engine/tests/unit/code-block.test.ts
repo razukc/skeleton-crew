@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Runtime } from '../../../../dist/index.js';
+import { Runtime } from 'skeleton-crew-runtime';
 import { createCodeBlockPlugin, type RuntimeContextWithCodeBlock } from '../../src/plugins/code-block.js';
 import { createComponentRegistryPlugin, type RuntimeContextWithComponents } from '../../src/plugins/component-registry.js';
 

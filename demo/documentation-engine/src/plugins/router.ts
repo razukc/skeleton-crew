@@ -7,7 +7,7 @@
  * @see Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 11.2
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 
 /**
  * Route mapping interface
@@ -78,6 +78,12 @@ export interface RuntimeContextWithRouter extends RuntimeContext {
 export function createRouterPlugin(): PluginDefinition {
   // Route storage using Map<path, screenId>
   const routes = new Map<string, string>();
+  
+  // Store unregister functions for cleanup
+  const unregisterFunctions: Array<() => void> = [];
+  
+  // Store popstate handler for cleanup
+  let popstateHandler: ((event: PopStateEvent) => void) | null = null;
 
   // Router implementation
   const router: Router = {
@@ -118,8 +124,9 @@ export function createRouterPlugin(): PluginDefinition {
 
       // Register router:navigate action
       // @see Requirements 2.2, 11.2
-      context.actions.registerAction({
+      const unregisterNavigate = context.actions.registerAction({
         id: 'router:navigate',
+        timeout: 5000,
         handler: async (params: { path: string }): Promise<NavigationResult> => {
           const { path } = params;
 
@@ -158,11 +165,13 @@ export function createRouterPlugin(): PluginDefinition {
           return { path: normalizedPath, screenId };
         }
       });
+      unregisterFunctions.push(unregisterNavigate);
 
       // Register router:back action
       // @see Requirements 2.3, 11.2
-      context.actions.registerAction({
+      const unregisterBack = context.actions.registerAction({
         id: 'router:back',
+        timeout: 5000,
         handler: async (): Promise<NavigationResult> => {
           if (typeof window !== 'undefined' && window.history) {
             window.history.back();
@@ -183,11 +192,13 @@ export function createRouterPlugin(): PluginDefinition {
           throw new Error('Browser history navigation not available');
         }
       });
+      unregisterFunctions.push(unregisterBack);
 
       // Register router:forward action
       // @see Requirements 2.4, 11.2
-      context.actions.registerAction({
+      const unregisterForward = context.actions.registerAction({
         id: 'router:forward',
+        timeout: 5000,
         handler: async (): Promise<NavigationResult> => {
           if (typeof window !== 'undefined' && window.history) {
             window.history.forward();
@@ -208,10 +219,11 @@ export function createRouterPlugin(): PluginDefinition {
           throw new Error('Browser history navigation not available');
         }
       });
+      unregisterFunctions.push(unregisterForward);
 
       // Listen to browser popstate event (back/forward buttons)
       if (typeof window !== 'undefined') {
-        window.addEventListener('popstate', (event) => {
+        popstateHandler = (event) => {
           if (event.state && event.state.path && event.state.screenId) {
             // Emit navigation event
             context.events.emit('router:navigated', {
@@ -219,8 +231,25 @@ export function createRouterPlugin(): PluginDefinition {
               screenId: event.state.screenId
             });
           }
-        });
+        };
+        window.addEventListener('popstate', popstateHandler);
       }
+    },
+    dispose(): void {
+      // Unregister all actions
+      unregisterFunctions.forEach(fn => fn());
+      unregisterFunctions.length = 0;
+      
+      // Remove popstate listener
+      if (typeof window !== 'undefined' && popstateHandler) {
+        window.removeEventListener('popstate', popstateHandler);
+        popstateHandler = null;
+      }
+      
+      // Clear routes
+      routes.clear();
+      
+      console.log('[router] Plugin disposed');
     }
   };
 }

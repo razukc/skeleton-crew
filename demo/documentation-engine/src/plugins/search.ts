@@ -7,7 +7,7 @@
  * @see Requirements 4.1, 4.2, 4.3, 4.4, 4.5, 11.3
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 import MiniSearch from 'minisearch';
 import type { ScreenMetadata } from './markdown.js';
 
@@ -213,6 +213,10 @@ export function createSearchPlugin(): PluginDefinition {
 
   // Store documents for snippet extraction
   const documents = new Map<string, SearchDocument>();
+  
+  // Store unsubscribe functions for cleanup
+  let unsubscribePageRegistered: (() => void) | null = null;
+  const unregisterFunctions: Array<() => void> = [];
 
   // Search plugin implementation
   const searchPlugin: SearchPlugin = {
@@ -244,7 +248,7 @@ export function createSearchPlugin(): PluginDefinition {
 
       // Listen to markdown:page-registered events to index pages
       // @see Requirements 4.1
-      context.events.on('markdown:page-registered', (data: any) => {
+      unsubscribePageRegistered = context.events.on('markdown:page-registered', (data: any) => {
         if (!data || !data.id || !data.metadata) {
           return;
         }
@@ -259,14 +263,32 @@ export function createSearchPlugin(): PluginDefinition {
           // Add to search index
           searchIndex.add(doc);
         } catch (error) {
-          console.error(`Error indexing page ${data.id}:`, error);
+          console.error(`[search] Error indexing page ${data.id}:`, error);
         }
       });
+      
+      // Index any pages that were already loaded before this plugin was initialized
+      // This handles the case where markdown-loader completes before search plugin setup
+      const markdownContext = context as any;
+      if (markdownContext.markdown) {
+        const existingPages = markdownContext.markdown.getAllMetadata();
+        
+        for (const [id, metadata] of existingPages.entries()) {
+          try {
+            const doc = createSearchDocument(id, metadata);
+            documents.set(id, doc);
+            searchIndex.add(doc);
+          } catch (error) {
+            console.error(`[search] Error indexing existing page ${id}:`, error);
+          }
+        }
+      }
 
       // Register search:query action
       // @see Requirements 4.2, 11.3
-      context.actions.registerAction({
+      const unregisterQuery = context.actions.registerAction({
         id: 'search:query',
+        timeout: 5000,
         handler: async (params: { term: string }) => {
           const results = searchPlugin.search(params.term);
 
@@ -280,6 +302,21 @@ export function createSearchPlugin(): PluginDefinition {
           return results;
         }
       });
+      unregisterFunctions.push(unregisterQuery);
+    },
+    dispose(): void {
+      // Clean up event listener
+      if (unsubscribePageRegistered) unsubscribePageRegistered();
+      
+      // Unregister all actions
+      unregisterFunctions.forEach(fn => fn());
+      unregisterFunctions.length = 0;
+      
+      // Clear search index and documents
+      searchIndex.removeAll();
+      documents.clear();
+      
+      console.log('[search] Plugin disposed');
     }
   };
 }

@@ -7,7 +7,7 @@
  * @see Requirements 7.2, 7.3, 7.4
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 import type { ComponentType } from 'react';
 
 /**

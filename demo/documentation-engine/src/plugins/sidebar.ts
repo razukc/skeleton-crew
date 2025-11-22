@@ -7,7 +7,7 @@
  * @see Requirements 3.1, 3.2, 3.3, 3.4, 3.5
  */
 
-import type { PluginDefinition, RuntimeContext } from '../../../../dist/index.js';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 import type { ScreenMetadata } from './markdown.js';
 
 /**
@@ -155,6 +155,11 @@ function sortNavigationItems(items: NavigationItem[]): void {
 export function createSidebarPlugin(): PluginDefinition {
   let navigationTree: NavigationTree = { root: [], flat: new Map() };
   let activePage: string | null = null;
+  
+  // Store unsubscribe functions for cleanup
+  let unsubscribePageRegistered: (() => void) | null = null;
+  let unsubscribeAllPagesLoaded: (() => void) | null = null;
+  let unsubscribeNavigated: (() => void) | null = null;
 
   // Sidebar plugin implementation
   const sidebarPlugin: SidebarPlugin = {
@@ -202,13 +207,20 @@ export function createSidebarPlugin(): PluginDefinition {
 
       // Listen to markdown:page-registered events to update navigation
       // @see Requirements 3.1, 3.2
-      context.events.on('markdown:page-registered', (_data: any) => {
+      unsubscribePageRegistered = context.events.on('markdown:page-registered', (_data: any) => {
+        rebuildNavigationTree();
+      });
+
+      // Listen to markdown:all-pages-loaded event to rebuild navigation after all pages are loaded
+      // @see Requirements 3.1, 3.2
+      unsubscribeAllPagesLoaded = context.events.on('markdown:all-pages-loaded', (_data: any) => {
+        console.log('[sidebar] All pages loaded, rebuilding navigation tree');
         rebuildNavigationTree();
       });
 
       // Listen to router:navigated events to update active page
       // @see Requirements 3.3
-      context.events.on('router:navigated', (data: any) => {
+      unsubscribeNavigated = context.events.on('router:navigated', (data: any) => {
         if (data && data.screenId) {
           activePage = data.screenId;
         }
@@ -217,6 +229,18 @@ export function createSidebarPlugin(): PluginDefinition {
       // Initial build of navigation tree
       // This handles screens that were registered before the sidebar plugin
       rebuildNavigationTree();
+    },
+    dispose(): void {
+      // Clean up event listeners
+      if (unsubscribePageRegistered) unsubscribePageRegistered();
+      if (unsubscribeAllPagesLoaded) unsubscribeAllPagesLoaded();
+      if (unsubscribeNavigated) unsubscribeNavigated();
+      
+      // Clear navigation tree
+      navigationTree = { root: [], flat: new Map() };
+      activePage = null;
+      
+      console.log('[sidebar] Plugin disposed');
     }
   };
 }
