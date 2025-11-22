@@ -1,0 +1,15 @@
+{
+  "versions": [
+    {
+      "id": "latest",
+      "label": "v2.0 (Latest)",
+      "path": "/"
+    },
+    {
+      "id": "v1.0",
+      "label": "v1.0",
+      "path": "/v1.0"
+    }
+  ],
+  "default": "latest"
+}
