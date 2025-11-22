@@ -405,17 +405,32 @@
     - **Property 45: Theme change event emission**
     - **Validates: Requirements 11.4**
 
-- [ ] 11. Checkpoint - Ensure feature plugins work
+- [x] 11. Checkpoint - Ensure feature plugins work
+
+
+
+
+
+
+
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Implement Callout Component
-  - [ ] 12.1 Create Callout component
+- [x] 12. Implement Callout Component
+
+
+
+
+  - [x] 12.1 Create Callout component
+
+
     - Implement rendering with type-based styling
     - Add icons for info, warning, error types
     - Apply appropriate colors
     - _Requirements: 13.2, 13.3, 13.4, 13.5_
   
-  - [ ] 12.2 Register Callout in component registry
+  - [x] 12.2 Register Callout in component registry
+
+
     - Make available for MDX usage
     - _Requirements: 7.4, 13.1_
   
@@ -423,29 +438,48 @@
     - **Property 48: Callout type-based styling**
     - **Validates: Requirements 13.2**
 
-- [ ] 13. Implement Playground Plugin
-  - [ ] 13.1 Create Playground component
+- [x] 13. Implement Playground Plugin
+
+
+
+
+
+  - [x] 13.1 Create Playground component
+
+
     - Implement code editor (use CodeMirror or Monaco)
     - Add preview pane
     - Implement error boundary
     - _Requirements: 8.1, 8.3_
   
-  - [ ] 13.2 Add real-time preview updates
+
+  - [x] 13.2 Add real-time preview updates
+
+
     - Debounce code changes
     - Re-render preview on change
     - _Requirements: 8.2_
+
   
-  - [ ] 13.3 Implement preset examples
+  - [x] 13.3 Implement preset examples
+
+
     - Add preset dropdown
     - Switch between examples
+
     - _Requirements: 8.4_
   
-  - [ ] 13.4 Add state preservation
+  - [x] 13.4 Add state preservation
+
+
     - Store modified code in session storage
+
     - Restore on navigation return
     - _Requirements: 8.5_
   
-  - [ ] 13.5 Register Playground in component registry
+  - [x] 13.5 Register Playground in component registry
+
+
     - Make available for MDX usage
     - _Requirements: 7.4_
   
@@ -461,24 +495,37 @@
     - **Property 33: Playground state preservation**
     - **Validates: Requirements 8.5**
 
-- [ ] 14. Implement Versioning Plugin
-  - [ ] 14.1 Create version configuration loader
+- [x] 14. Implement Versioning Plugin
+
+
+
+
+
+  - [x] 14.1 Create version configuration loader
+
+
     - Load version config from file
     - Parse version definitions
     - _Requirements: 9.1_
   
-  - [ ] 14.2 Create version selector component
+  - [x] 14.2 Create version selector component
+
+
     - Display available versions
     - Handle version selection
     - _Requirements: 9.2_
   
-  - [ ] 14.3 Implement version switching
+  - [x] 14.3 Implement version switching
+
+
     - Create version:switch action
     - Navigate to equivalent page in new version
     - Handle missing pages
     - _Requirements: 9.3, 9.4_
   
-  - [ ] 14.4 Add default version handling
+  - [x] 14.4 Add default version handling
+
+
     - Apply default version when none specified
     - _Requirements: 9.5_
   
@@ -494,19 +541,32 @@
     - **Property 36: Missing page fallback**
     - **Validates: Requirements 9.4**
 
-- [ ] 15. Implement Cache Plugin
+- [x] 15. Implement Cache Plugin
+
+
+
+
+
+
+
   - [ ] 15.1 Create cache storage
     - Implement Map-based cache
     - Add timestamp tracking
     - Configure TTL
+
+
     - _Requirements: 14.1_
   
   - [ ] 15.2 Implement cache retrieval
     - Check cache on screen requests
+
+
     - Serve cached content if valid
     - Emit cache:hit events
     - _Requirements: 14.2, 14.3_
   
+
+
   - [ ] 15.3 Add cache expiration
     - Check TTL on retrieval
     - Re-render expired content
@@ -538,24 +598,34 @@
     - **Property 53: LRU cache eviction**
     - **Validates: Requirements 14.5**
 
-- [ ] 16. Implement Static Export Plugin
-  - [ ] 16.1 Create export action handler
+- [x] 16. Implement Static Export Plugin
+
+
+
+
+
+  - [x] 16.1 Create export action handler
+
+
     - Implement export:static action
     - Get all registered screens
     - _Requirements: 10.1_
   
-  - [ ] 16.2 Implement screen rendering to HTML
+  - [x] 16.2 Implement screen rendering to HTML
+
     - Render each screen to static HTML
     - Preserve URL path structure
     - Handle rendering errors gracefully
     - _Requirements: 10.2, 10.5_
   
-  - [ ] 16.3 Add asset copying
+  - [x] 16.3 Add asset copying
+
     - Copy all files from assets directory
     - Maintain directory structure
     - _Requirements: 10.3_
   
-  - [ ] 16.4 Add export reporting
+  - [x] 16.4 Add export reporting
+
     - Count generated pages
     - Report errors
     - _Requirements: 10.4_
@@ -580,13 +650,22 @@
     - **Property 41: Export error resilience**
     - **Validates: Requirements 10.5**
 
-- [ ] 17. Implement Build-Time Optimization
-  - [ ] 17.1 Create build-time parser
+- [x] 17. Implement Build-Time Optimization
+
+
+
+
+
+  - [x] 17.1 Create build-time parser
+
+
     - Parse all markdown during build
     - Serialize to JSON
     - _Requirements: 15.1, 15.2_
   
-  - [ ] 17.2 Implement pre-parsed content loader
+  - [x] 17.2 Implement pre-parsed content loader
+
+
     - Load JSON instead of parsing at runtime
     - Skip markdown parser in bundle
     - _Requirements: 15.3, 15.4_
@@ -607,13 +686,20 @@
     - **Property 57: Bundle size reduction**
     - **Validates: Requirements 15.4**
 
+
+
 - [ ] 18. Create sample documentation content
+
+
+
   - [ ] 18.1 Create sample markdown files
     - Write index.md (homepage)
     - Write getting-started.md
     - Write guides/plugins.md
     - Write api/runtime.md
     - Add frontmatter to all files
+
+
     - _Requirements: 1.1, 1.2_
   
   - [ ] 18.2 Add code examples
@@ -621,16 +707,26 @@
     - Add MDX components (Callout, Playground)
     - _Requirements: 1.3, 7.1_
 
-- [ ] 19. Create main application entry point
-  - [ ] 19.1 Initialize runtime and register plugins
+- [x] 19. Create main application entry point
+
+
+
+
+  - [x] 19.1 Initialize runtime and register plugins
+
+
     - Create Runtime instance
     - Register all plugins in correct order
     - Initialize runtime
     - _Requirements: All_
   
+
+
   - [ ] 19.2 Set up initial navigation
     - Navigate to homepage on load
     - Handle initial URL routing
+
+
     - _Requirements: 2.1_
   
   - [ ] 19.3 Configure build scripts
@@ -639,7 +735,12 @@
     - Add static export script
     - _Requirements: 10.1_
 
-- [ ] 20. Write property test for event delivery
+- [x] 20. Write property test for event delivery
+
+
+
+
+
   - **Property 46: Event delivery to all listeners**
   - **Validates: Requirements 11.5**
 
