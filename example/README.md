@@ -1,3 +1,30 @@
+# Skeleton Crew Examples
+
+This directory contains examples demonstrating Skeleton Crew Runtime capabilities.
+
+## Quick Start
+
+**New to Skeleton Crew?** Start with the focused examples:
+
+```bash
+npm run build
+npm run example:01  # Plugin System
+npm run example:02  # Screen Registry
+npm run example:03  # Action Engine
+npm run example:04  # Event Bus
+npm run example:05  # Runtime Context
+```
+
+See [EXAMPLES.md](./EXAMPLES.md) for detailed learning path.
+
+**Ready for a complete example?** Run the full playground:
+
+```bash
+npm run example
+```
+
+---
+
 # Skeleton Crew Playground
 
 A minimal, plugin-driven example application that demonstrates all core capabilities of the Skeleton Crew Runtime.

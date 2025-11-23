@@ -15,7 +15,12 @@
     "build": "tsc",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "example": "tsx example/index.ts"
+    "example": "tsx example/index.ts",
+    "example:01": "tsx example/01-plugin-system/index.ts",
+    "example:02": "tsx example/02-screen-registry/index.ts",
+    "example:03": "tsx example/03-action-engine/index.ts",
+    "example:04": "tsx example/04-event-bus/index.ts",
+    "example:05": "tsx example/05-runtime-context/index.ts"
   },
   "files": [
     "dist"
