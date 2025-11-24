@@ -1,0 +1,45 @@
+{
+  "name": "tab-manager-extension",
+  "version": "1.0.0",
+  "description": "A browser extension built on Skeleton Crew Runtime for managing tabs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build --mode chrome",
+    "build:chrome": "vite build --mode chrome",
+    "build:firefox": "vite build --mode firefox",
+    "build:all": "npm run build:chrome && npm run build:firefox",
+    "package:chrome": "cd dist-chrome && zip -r ../tab-manager-chrome.zip .",
+    "package:firefox": "cd dist-firefox && zip -r ../tab-manager-firefox.zip .",
+    "icons": "node scripts/create-icon-placeholders.js",
+    "test": "vitest --run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest --coverage",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "skeleton-crew-runtime": "file:../.."
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.254",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.42",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "fast-check": "^3.15.0",
+    "jsdom": "^27.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.7",
+    "vitest": "^1.0.4"
+  },
+  "keywords": [
+    "browser-extension",
+    "tab-manager",
+    "skeleton-crew",
+    "plugin-architecture"
+  ],
+  "author": "Raju KC",
+  "license": "MIT"
+}

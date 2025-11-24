@@ -1,0 +1,876 @@
+/* App Container */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+}
+
+/* Header */
+.app-header {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.app-header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Error Banner */
+.app-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #fee;
+  border-left: 4px solid #d32f2f;
+  color: #d32f2f;
+  font-size: 13px;
+  margin: 0;
+}
+
+.app-error-icon {
+  font-size: 16px;
+}
+
+.app-error-message {
+  flex: 1;
+}
+
+.app-error-close {
+  background: none;
+  border: none;
+  color: #d32f2f;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.app-error-close:hover {
+  background: rgba(211, 47, 47, 0.1);
+}
+
+/* Content Area */
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Sections */
+.app-section {
+  background: white;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.app-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #333;
+}
+
+.app-section-tabs {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-section-sessions {
+  max-height: 200px;
+}
+
+/* Loading State */
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Scrollbar Styling */
+.app-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.app-content::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.app-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* ============================================
+   SEARCH BAR STYLES
+   ============================================ */
+
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 36px 10px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-input::placeholder {
+  color: #999;
+}
+
+.search-clear-button {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.search-clear-button:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
+/* ============================================
+   ACTION BAR STYLES
+   ============================================ */
+
+.action-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  position: relative;
+}
+
+.action-button {
+  flex: 1;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.action-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.action-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.action-label {
+  font-size: 13px;
+}
+
+.action-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ff4444;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.action-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.action-loading-spinner {
+  font-size: 18px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   TAB LIST STYLES
+   ============================================ */
+
+.tab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 300px;
+  padding-right: 4px;
+}
+
+.tab-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tab-list::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 3px;
+}
+
+.tab-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.tab-list::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  gap: 8px;
+}
+
+.tab-item:hover {
+  background: #f0f0f0;
+  border-color: #d0d0d0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.tab-item-active {
+  background: #e8eeff;
+  border-color: #667eea;
+}
+
+.tab-item-active:hover {
+  background: #dde5ff;
+}
+
+.tab-item-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tab-favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.tab-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tab-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-url {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close-button {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.tab-item:hover .tab-close-button {
+  opacity: 1;
+}
+
+.tab-close-button:hover {
+  background: #e0e0e0;
+  color: #d32f2f;
+}
+
+.tab-list-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+
+/* Tab Groups */
+.tab-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tab-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f5f5f5;
+  border-left: 3px solid #667eea;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.tab-group-title {
+  flex: 1;
+}
+
+.tab-group-count {
+  color: #999;
+  font-weight: 400;
+}
+
+.tab-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 12px;
+}
+
+/* ============================================
+   SESSION MANAGER STYLES
+   ============================================ */
+
+.session-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session-manager-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: #333;
+}
+
+.session-save-button {
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.session-save-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.session-save-button:active {
+  transform: translateY(0);
+}
+
+/* Save Dialog */
+.session-save-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.session-name-input {
+  padding: 8px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  outline: none;
+}
+
+.session-name-input:focus {
+  border-color: #667eea;
+}
+
+.session-dialog-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.session-dialog-button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.session-dialog-confirm {
+  background: #667eea;
+  color: white;
+}
+
+.session-dialog-confirm:hover:not(:disabled) {
+  background: #5568d3;
+  transform: translateY(-1px);
+}
+
+.session-dialog-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-dialog-cancel {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.session-dialog-cancel:hover {
+  background: #d0d0d0;
+  transform: translateY(-1px);
+}
+
+/* Session List */
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.session-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.session-list::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 3px;
+}
+
+.session-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.session-list::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  gap: 12px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.session-item:hover {
+  background: #f0f0f0;
+  border-color: #d0d0d0;
+}
+
+.session-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #666;
+}
+
+.session-date {
+  white-space: nowrap;
+}
+
+.session-tab-count {
+  white-space: nowrap;
+}
+
+.session-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.session-action-button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.session-restore-button {
+  background: #667eea;
+  color: white;
+}
+
+.session-restore-button:hover {
+  background: #5568d3;
+  transform: translateY(-1px);
+}
+
+.session-delete-button {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.session-delete-button:hover {
+  background: #ffcdd2;
+  color: #d32f2f;
+  transform: translateY(-1px);
+}
+
+.session-list-empty {
+  padding: 30px 20px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+
+/* ============================================
+   RESPONSIVE LAYOUT
+   ============================================ */
+
+/* Optimize for standard popup size (400x600) */
+@media (min-width: 400px) and (min-height: 500px) {
+  .app-content {
+    padding: 16px;
+  }
+  
+  .tab-list {
+    max-height: 300px;
+  }
+  
+  .session-list {
+    max-height: 200px;
+  }
+}
+
+/* Smaller popup sizes */
+@media (max-width: 399px) {
+  .app-header {
+    padding: 12px 16px;
+  }
+  
+  .app-header h1 {
+    font-size: 16px;
+  }
+  
+  .app-content {
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .app-section {
+    padding: 10px;
+  }
+  
+  .action-bar {
+    flex-direction: column;
+  }
+  
+  .action-button {
+    width: 100%;
+    min-width: auto;
+  }
+  
+  .tab-item {
+    padding: 8px 10px;
+  }
+  
+  .tab-title {
+    font-size: 12px;
+  }
+  
+  .tab-url {
+    font-size: 10px;
+  }
+  
+  .session-item {
+    padding: 8px 10px;
+  }
+  
+  .session-name {
+    font-size: 12px;
+  }
+}
+
+/* Taller popup sizes */
+@media (min-height: 700px) {
+  .tab-list {
+    max-height: 400px;
+  }
+  
+  .session-list {
+    max-height: 250px;
+  }
+}
+
+/* Very tall popup sizes */
+@media (min-height: 900px) {
+  .tab-list {
+    max-height: 500px;
+  }
+  
+  .session-list {
+    max-height: 300px;
+  }
+}
+
+/* Ensure scrolling works properly */
+.app-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tab-list,
+.session-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Prevent horizontal overflow */
+.tab-title,
+.tab-url,
+.session-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ensure buttons don't wrap text awkwardly */
+.action-button {
+  white-space: nowrap;
+}
+
+/* Responsive action bar for narrow widths */
+@media (max-width: 350px) {
+  .action-icon {
+    font-size: 14px;
+  }
+  
+  .action-label {
+    font-size: 11px;
+  }
+  
+  .session-action-button {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}
+
+/* Optimize for exactly 400x600 (most common popup size) */
+@media (width: 400px) and (height: 600px) {
+  body {
+    width: 400px;
+    height: 600px;
+  }
+  
+  .app {
+    height: 600px;
+  }
+  
+  .tab-list {
+    max-height: 280px;
+  }
+  
+  .session-list {
+    max-height: 180px;
+  }
+}
+
+/* Handle very short popups */
+@media (max-height: 400px) {
+  .app-header {
+    padding: 10px 16px;
+  }
+  
+  .app-content {
+    padding: 10px;
+    gap: 10px;
+  }
+  
+  .tab-list {
+    max-height: 150px;
+  }
+  
+  .session-list {
+    max-height: 100px;
+  }
+  
+  .app-section-sessions {
+    max-height: 120px;
+  }
+}
+
+/* Ensure minimum usable size */
+@media (max-width: 300px) or (max-height: 300px) {
+  .app-header h1 {
+    font-size: 14px;
+  }
+  
+  .app-content {
+    padding: 8px;
+    gap: 8px;
+  }
+  
+  .app-section {
+    padding: 8px;
+  }
+  
+  .tab-list {
+    max-height: 120px;
+  }
+  
+  .session-list {
+    max-height: 80px;
+  }
+}

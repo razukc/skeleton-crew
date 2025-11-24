@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    // Generate extension icons
+    const sizes = [16, 48, 128];
+    
+    sizes.forEach(size => {
+      const canvas = document.getElementById('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      
+      // Gradient background
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      
+      // Draw tab icon
+      ctx.fillStyle = 'white';
+      const padding = size * 0.2;
+      const tabWidth = size - (padding * 2);
+      const tabHeight = size * 0.6;
+      
+      // Tab shape
+      ctx.beginPath();
+      ctx.moveTo(padding, size - padding);
+      ctx.lineTo(padding, padding + size * 0.15);
+      ctx.lineTo(padding + size * 0.1, padding);
+      ctx.lineTo(size - padding - size * 0.1, padding);
+      ctx.lineTo(size - padding, padding + size * 0.15);
+      ctx.lineTo(size - padding, size - padding);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Download
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `icon${size}.png`;
+        a.click();
+      });
+    });
+  </script>
+</body>
+</html>
