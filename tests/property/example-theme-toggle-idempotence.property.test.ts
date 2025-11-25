@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
-import { Runtime } from '../../../src/runtime.js';
-import { settingsPlugin, getTheme, setTheme } from '../../../example/plugins/settings.js';
+import { Runtime } from '../../src/runtime.js';
+import { settingsPlugin, getTheme, setTheme } from '../../example/plugins/settings.js';
 
 /**
  * Property 7: Theme toggle idempotence
