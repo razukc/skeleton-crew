@@ -169,10 +169,77 @@ export interface RuntimeContext {
     on(event: string, handler: (data: unknown) => void): () => void;
   };
   getRuntime(): Runtime;
+  
+  // Migration Support
+  /**
+   * Readonly access to host context injected at runtime initialization
+   * @see Requirements 1.3, 1.4, 9.2
+   */
+  readonly host: Readonly<Record<string, unknown>>;
+  
+  /**
+   * Introspection API for querying runtime metadata
+   * @see Requirements 3.1, 4.1, 5.1, 6.1, 9.2
+   */
+  readonly introspect: IntrospectionAPI;
 }
 
 export interface Runtime {
   initialize(): Promise<void>;
   shutdown(): Promise<void>;
   getContext(): RuntimeContext;
+}
+
+// Migration Support Types
+
+/**
+ * Runtime initialization options
+ * @see Requirements 1.1, 9.1
+ */
+export interface RuntimeOptions {
+  logger?: Logger;
+  hostContext?: Record<string, unknown>;
+}
+
+/**
+ * Action metadata returned by introspection (excludes handler function)
+ * @see Requirements 3.2, 3.4, 3.5, 9.3
+ */
+export interface ActionMetadata {
+  id: string;
+  timeout?: number;
+}
+
+/**
+ * Plugin metadata returned by introspection (excludes setup/dispose functions)
+ * @see Requirements 4.2, 4.4, 4.5, 9.4
+ */
+export interface PluginMetadata {
+  name: string;
+  version: string;
+}
+
+/**
+ * Runtime metadata with overall statistics
+ * @see Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 9.5
+ */
+export interface IntrospectionMetadata {
+  runtimeVersion: string;
+  totalActions: number;
+  totalPlugins: number;
+  totalScreens: number;
+}
+
+/**
+ * Introspection API for querying runtime metadata
+ * @see Requirements 3.1, 4.1, 5.1, 6.1, 9.2
+ */
+export interface IntrospectionAPI {
+  listActions(): string[];
+  getActionDefinition(id: string): ActionMetadata | null;
+  listPlugins(): string[];
+  getPluginDefinition(name: string): PluginMetadata | null;
+  listScreens(): string[];
+  getScreenDefinition(id: string): ScreenDefinition | null;
+  getMetadata(): IntrospectionMetadata;
 }

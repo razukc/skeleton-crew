@@ -4,138 +4,140 @@ inclusion: always
 
 # Skeleton Crew Runtime API Guidelines
 
-This steering file ensures proper usage of the Skeleton Crew Runtime API when building applications and extensions.
+When working with Skeleton Crew Runtime, follow these patterns and conventions.
 
-## Core Principles
+## Critical Rules
 
-1. **Use ESM imports with .js extensions** - All imports must include `.js` extension
-2. **Follow plugin lifecycle** - Always implement setup, optionally implement dispose
-3. **Use RuntimeContext for all subsystem access** - Never access subsystems directly
-4. **Emit events for state changes** - Keep plugins loosely coupled via events
-5. **Register actions for business logic** - UI should call actions, not implement logic
+1. **ESM imports MUST use .js extensions** - `import { X } from './file.js'` not `'./file'`
+2. **Access subsystems ONLY via RuntimeContext** - Never instantiate ScreenRegistry, ActionEngine, etc. directly
+3. **Register plugins BEFORE runtime.initialize()** - Registration after initialization will fail
+4. **Business logic goes in actions** - UI components should call actions, not implement logic
+5. **Use namespaced IDs** - Actions: `plugin:action`, Events: `entity:action`
 
-## Plugin Definition Pattern
+## Standard Plugin Pattern
+
+Every plugin follows this structure:
 
 ```typescript
 import { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
 
 export const myPlugin: PluginDefinition = {
-  name: 'my-plugin',
-  version: '1.0.0',
+  name: 'my-plugin',        // Required: unique identifier
+  version: '1.0.0',         // Required: semantic version
   
   setup(context: RuntimeContext) {
-    // Register screens
+    // Register screens (optional)
     context.screens.registerScreen({
       id: 'my-screen',
       title: 'My Screen',
       component: 'MyComponent'
     });
     
-    // Register actions
+    // Register actions (business logic)
     context.actions.registerAction({
-      id: 'my-action',
+      id: 'my:action',      // Use namespaced IDs
       handler: async (params, ctx) => {
-        // Business logic here
+        // Implementation here
         return result;
       },
-      timeout: 5000 // Optional timeout
+      timeout: 5000         // Optional: milliseconds
     });
     
-    // Subscribe to events
-    context.events.on('some:event', (data) => {
-      // Handle event
+    // Subscribe to events (cross-plugin communication)
+    context.events.on('entity:changed', (data) => {
+      // React to state changes
     });
   },
   
   dispose(context: RuntimeContext) {
-    // Cleanup logic
-    // Note: Event listeners are auto-unsubscribed
+    // Optional: cleanup resources
+    // Event listeners auto-unsubscribe on dispose
   }
 };
 ```
 
-## Action Registration Best Practices
+## Actions: Business Logic Layer
 
-### Type-Safe Actions
+### Type-Safe Action Registration
+
+Always use TypeScript generics for type safety:
 
 ```typescript
-interface MyParams {
-  id: string;
-  name: string;
-}
-
-interface MyResult {
-  success: boolean;
-  data: unknown;
-}
+interface MyParams { id: string; name: string; }
+interface MyResult { success: boolean; data: unknown; }
 
 context.actions.registerAction<MyParams, MyResult>({
   id: 'my:action',
   handler: async (params, ctx) => {
     // params is typed as MyParams
-    // return type must match MyResult
+    // return must match MyResult
     return { success: true, data: {} };
-  }
+  },
+  timeout: 5000  // Optional: prevent hanging operations
 });
 ```
 
-### Action Naming Convention
+### Action Naming: plugin:action
 
-Use namespaced action IDs: `<plugin-name>:<action-name>`
+Format: `<plugin-name>:<action-name>`
 
-Examples:
-- `tabs:query`
-- `tabs:activate`
-- `sessions:save`
-- `storage:load`
+Examples: `tabs:query`, `tabs:activate`, `sessions:save`, `storage:load`
 
-### Action Execution
+### Executing Actions
 
 ```typescript
-// From within a plugin or action handler
+// From plugins or other actions
 const result = await context.actions.runAction<ParamsType, ResultType>(
-  'action:id',
+  'plugin:action',
   params
 );
+
+// Always handle errors
+try {
+  const result = await context.actions.runAction('my:action', params);
+} catch (error) {
+  if (error instanceof ActionTimeoutError) {
+    // Handle timeout
+  } else if (error instanceof ActionExecutionError) {
+    // Handle execution failure
+  }
+}
 ```
 
-## Event Bus Best Practices
+## Events: Cross-Plugin Communication
 
-### Event Naming Convention
+### Event Naming: entity:action
 
-Use namespaced event names: `<entity>:<action>`
+Format: `<entity>:<action>`
 
-Examples:
-- `tab:created`
-- `tab:updated`
-- `session:saved`
-- `storage:error`
+Examples: `tab:created`, `tab:updated`, `session:saved`, `storage:error`
 
 ### Emitting Events
 
 ```typescript
-// Synchronous emit
+// Fire-and-forget (synchronous)
 context.events.emit('tab:created', { id: 123, title: 'New Tab' });
 
-// Asynchronous emit (waits for all handlers)
+// Wait for all handlers (asynchronous)
 await context.events.emitAsync('session:saved', { sessionId: 'abc' });
 ```
 
 ### Subscribing to Events
 
 ```typescript
-// In plugin setup
-const unsubscribe = context.events.on('tab:updated', (data) => {
+// In plugin setup - auto-cleanup on dispose
+context.events.on('tab:updated', (data) => {
   console.log('Tab updated:', data);
 });
 
-// Manual cleanup (usually not needed - auto-cleaned on dispose)
-// unsubscribe();
+// Manual unsubscribe (rarely needed)
+const unsubscribe = context.events.on('event', handler);
+unsubscribe();
 ```
 
-### Event Handler Error Isolation
+### Error Handling in Event Handlers
 
-Event handlers should never throw errors that break other handlers:
+NEVER let errors propagate - they break other handlers:
 
 ```typescript
 context.events.on('some:event', (data) => {
@@ -143,69 +145,69 @@ context.events.on('some:event', (data) => {
     // Your logic
   } catch (error) {
     console.error('Handler failed:', error);
-    // Don't re-throw - let other handlers run
+    // Don't re-throw
   }
 });
 ```
 
-## Runtime Initialization Pattern
+## Runtime Initialization Sequence
 
-### Background Script / Service Worker
+Critical order: Create → Register → Initialize → Use
 
 ```typescript
 import { Runtime } from 'skeleton-crew-runtime';
 import { plugin1 } from './plugins/plugin1.js';
 import { plugin2 } from './plugins/plugin2.js';
 
-// Create runtime instance
+// 1. Create runtime
 const runtime = new Runtime();
 
-// Register plugins BEFORE initialization
+// 2. Register plugins (BEFORE initialize)
 runtime.registerPlugin(plugin1);
 runtime.registerPlugin(plugin2);
 
-// Initialize runtime (executes plugin setup callbacks)
+// 3. Initialize (executes plugin setup callbacks)
 await runtime.initialize();
 
-// Get context for use in message handlers
+// 4. Get context for application use
 const context = runtime.getContext();
 
-// Handle messages from UI
+// 5. Use context in your application
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'action') {
     context.actions.runAction(message.action, message.params)
       .then(result => sendResponse({ success: true, result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Async response
+    return true;
   }
 });
 
-// Cleanup on shutdown
+// 6. Cleanup on shutdown
 chrome.runtime.onSuspend.addListener(async () => {
   await runtime.shutdown();
 });
 ```
 
-## Screen Registry Usage
+## Screens: Declarative UI Definitions
 
 ### Registering Screens
 
 ```typescript
 context.screens.registerScreen({
-  id: 'home',
-  title: 'Home',
-  component: 'HomeComponent' // Can be string or any type
+  id: 'home',              // Unique identifier
+  title: 'Home',           // Display title
+  component: 'HomeComponent'  // Any type - string, class, function, etc.
 });
 ```
 
 ### Retrieving Screens
 
 ```typescript
-const screen = context.screens.getScreen('home');
-const allScreens = context.screens.getAllScreens();
+const screen = context.screens.getScreen('home');  // Single screen or undefined
+const allScreens = context.screens.getAllScreens(); // Array of all screens
 ```
 
-## Error Handling Patterns
+## Error Handling
 
 ### Action Errors
 
@@ -216,16 +218,16 @@ try {
   const result = await context.actions.runAction('my:action', params);
 } catch (error) {
   if (error instanceof ActionTimeoutError) {
-    console.error('Action timed out:', error.actionId, error.timeoutMs);
+    // Action exceeded timeout limit
+    console.error('Timeout:', error.actionId, error.timeoutMs);
   } else if (error instanceof ActionExecutionError) {
-    console.error('Action failed:', error.actionId, error.cause);
-  } else {
-    console.error('Unknown error:', error);
+    // Action handler threw error
+    console.error('Failed:', error.actionId, error.cause);
   }
 }
 ```
 
-### Validation Errors
+### Registration Errors
 
 ```typescript
 import { ValidationError, DuplicateRegistrationError } from 'skeleton-crew-runtime';
@@ -234,67 +236,60 @@ try {
   context.screens.registerScreen(screen);
 } catch (error) {
   if (error instanceof ValidationError) {
-    console.error('Invalid screen:', error.resourceType, error.field);
+    // Invalid screen definition
+    console.error('Invalid:', error.resourceType, error.field);
   } else if (error instanceof DuplicateRegistrationError) {
-    console.error('Duplicate screen:', error.identifier);
+    // Screen ID already registered
+    console.error('Duplicate:', error.identifier);
   }
 }
 ```
 
-## Browser Extension Specific Patterns
+## Browser Extension Integration
 
-### Message Passing to Background
+### UI to Background Communication
 
 ```typescript
-// From popup/content script
+// Helper function in popup/content script
 async function executeAction(action: string, params?: unknown) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
       { type: 'action', action, params },
       (response) => {
-        if (response.success) {
-          resolve(response.result);
-        } else {
-          reject(new Error(response.error));
-        }
+        if (response.success) resolve(response.result);
+        else reject(new Error(response.error));
       }
     );
   });
 }
 
-// Usage
+// Usage in UI
 const tabs = await executeAction('tabs:query');
 ```
 
-### Event Broadcasting from Background
+### Background to UI Broadcasting
 
 ```typescript
-// In background script
+// Background script - broadcast events to UI
 context.events.on('tab:created', (data) => {
-  // Broadcast to all extension contexts
   chrome.runtime.sendMessage({
     type: 'event',
     event: 'tab:created',
     data
   });
 });
-```
 
-### Event Listening in UI
-
-```typescript
-// In popup/content script
+// UI script - listen for events
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'event') {
-    // Update UI based on event
     handleEvent(message.event, message.data);
   }
 });
 ```
 
-## Testing Patterns
+## Testing with Vitest
 
-### Plugin Testing
+### Plugin Test Structure
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -311,101 +306,93 @@ describe('MyPlugin', () => {
   });
   
   afterEach(async () => {
-    await runtime.shutdown();
+    await runtime.shutdown();  // Always cleanup
   });
   
-  it('should register actions', () => {
+  it('registers actions', () => {
     const context = runtime.getContext();
     const action = context.actions.getAction('my:action');
     expect(action).toBeDefined();
   });
   
-  it('should execute action', async () => {
+  it('executes actions', async () => {
     const context = runtime.getContext();
     const result = await context.actions.runAction('my:action', { id: '123' });
     expect(result).toBeDefined();
   });
+  
+  it('emits events', () => {
+    const context = runtime.getContext();
+    const spy = vi.fn();
+    
+    context.events.on('my:event', spy);
+    context.events.emit('my:event', { data: 'test' });
+    
+    expect(spy).toHaveBeenCalledWith({ data: 'test' });
+  });
 });
 ```
 
-### Event Testing
+## Common Mistakes
+
+### ❌ Instantiating subsystems directly
 
 ```typescript
-it('should emit events', async () => {
-  const context = runtime.getContext();
-  const eventSpy = vi.fn();
-  
-  context.events.on('my:event', eventSpy);
-  context.events.emit('my:event', { data: 'test' });
-  
-  expect(eventSpy).toHaveBeenCalledWith({ data: 'test' });
-});
-```
-
-## Common Mistakes to Avoid
-
-### ❌ Don't access subsystems directly
-
-```typescript
-// WRONG
+// WRONG - never do this
 import { ScreenRegistry } from 'skeleton-crew-runtime';
 const registry = new ScreenRegistry();
 ```
 
-### ✅ Use RuntimeContext
+**Fix:** Use RuntimeContext in plugin setup
 
 ```typescript
-// CORRECT
 setup(context: RuntimeContext) {
   context.screens.registerScreen(...);
 }
 ```
 
-### ❌ Don't forget .js extensions
+### ❌ Missing .js extensions
 
 ```typescript
-// WRONG
+// WRONG - ESM requires extensions
 import { myPlugin } from './plugins/my-plugin';
 ```
 
-### ✅ Include .js extensions
+**Fix:** Always include .js extension
 
 ```typescript
-// CORRECT
 import { myPlugin } from './plugins/my-plugin.js';
 ```
 
-### ❌ Don't register plugins after initialization
+### ❌ Late plugin registration
 
 ```typescript
-// WRONG
+// WRONG - too late
 await runtime.initialize();
-runtime.registerPlugin(myPlugin); // Too late!
+runtime.registerPlugin(myPlugin);
 ```
 
-### ✅ Register before initialization
+**Fix:** Register before initialize
 
 ```typescript
-// CORRECT
 runtime.registerPlugin(myPlugin);
 await runtime.initialize();
 ```
 
-### ❌ Don't implement business logic in UI
+### ❌ Business logic in UI
 
 ```typescript
-// WRONG - in React component
+// WRONG - UI should not contain business logic
 function TabList() {
   const handleClose = (tabId) => {
-    chrome.tabs.remove(tabId); // Business logic in UI!
+    chrome.tabs.remove(tabId);
   };
 }
 ```
 
-### ✅ Call actions from UI
+**Fix:** Call actions from UI
 
 ```typescript
-// CORRECT - in React component
 function TabList() {
   const handleClose = async (tabId) => {
     await executeAction('tabs:close', { tabId });
@@ -413,36 +400,32 @@ function TabList() {
 }
 ```
 
-### ❌ Don't forget to handle action errors
+### ❌ Unhandled action errors
 
 ```typescript
-// WRONG
+// WRONG - errors will propagate
 const result = await context.actions.runAction('my:action');
 ```
 
-### ✅ Always handle errors
+**Fix:** Always use try-catch
 
 ```typescript
-// CORRECT
 try {
   const result = await context.actions.runAction('my:action');
 } catch (error) {
   console.error('Action failed:', error);
-  // Handle error appropriately
 }
 ```
 
-## Performance Best Practices
+## Performance Guidelines
 
-1. **Use action timeouts** for long-running operations
-2. **Batch event emissions** when possible
-3. **Unregister unused handlers** (though auto-cleanup happens on dispose)
-4. **Use O(1) lookups** - all registries use Map-based storage
-5. **Avoid storing large objects** in plugin state
+- **Set action timeouts** - Prevent hanging operations with timeout parameter
+- **Batch events** - Emit multiple changes as single event when possible
+- **Trust auto-cleanup** - Event handlers unsubscribe automatically on dispose
+- **Leverage O(1) lookups** - All registries use Map-based storage
+- **Keep plugin state small** - Avoid storing large objects in memory
 
-## TypeScript Configuration
-
-Ensure your tsconfig.json includes:
+## Required TypeScript Configuration
 
 ```json
 {
@@ -456,17 +439,17 @@ Ensure your tsconfig.json includes:
 }
 ```
 
-## Summary Checklist
+## Implementation Checklist
 
-When implementing with Skeleton Crew Runtime:
+When writing code with Skeleton Crew Runtime:
 
-- [ ] All imports use `.js` extensions
-- [ ] Plugins follow PluginDefinition interface
-- [ ] Actions are namespaced (`plugin:action`)
-- [ ] Events are namespaced (`entity:action`)
-- [ ] Business logic is in plugins, not UI
+- [ ] All imports include `.js` extensions
+- [ ] Plugins implement PluginDefinition interface
+- [ ] Actions use namespaced IDs: `plugin:action`
+- [ ] Events use namespaced names: `entity:action`
+- [ ] Business logic in actions, not UI components
 - [ ] UI calls actions via RuntimeContext
-- [ ] State changes emit events
-- [ ] Error handling is implemented
-- [ ] Tests use isolated Runtime instances
-- [ ] Runtime is properly shut down in tests
+- [ ] State changes emit events for cross-plugin communication
+- [ ] Action calls wrapped in try-catch
+- [ ] Tests create isolated Runtime instances
+- [ ] Tests call runtime.shutdown() in afterEach

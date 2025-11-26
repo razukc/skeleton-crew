@@ -34,21 +34,34 @@ The main orchestrator that coordinates all subsystems. Handles initialization, s
 #### Constructor
 
 ```typescript
-constructor(options?: { logger?: Logger })
+constructor(options?: RuntimeOptions)
 ```
 
-Creates a new Runtime instance with optional logger.
+Creates a new Runtime instance with optional configuration.
 
 **Parameters:**
-- `options.logger` (optional): Custom logger implementation (defaults to `ConsoleLogger`)
+- `options` (optional): Runtime configuration options
+  - `options.logger` (optional): Custom logger implementation (defaults to `ConsoleLogger`)
+  - `options.hostContext` (optional): Host application services to inject (defaults to empty object)
 
 **Example:**
 ```typescript
 import { Runtime, ConsoleLogger } from "skeleton-crew";
 
+// Basic usage
 const runtime = new Runtime();
-// or with custom logger
+
+// With custom logger
 const runtime = new Runtime({ logger: new ConsoleLogger() });
+
+// With host context (for migration scenarios)
+const runtime = new Runtime({
+  hostContext: {
+    db: databaseConnection,
+    logger: applicationLogger,
+    cache: cacheInstance
+  }
+});
 ```
 
 #### Methods
@@ -322,6 +335,61 @@ await ctx.events.emitAsync("user:created", { id: 124, name: "Bob" });
 // Unsubscribe when done
 unsubscribe();
 ```
+
+##### `host`
+
+Exposes the host context as a readonly object. Returns a frozen copy of the host context provided during runtime initialization.
+
+**Type:** `Readonly<Record<string, unknown>>`
+
+**Example:**
+```typescript
+// Access injected services
+const db = ctx.host.db;
+const logger = ctx.host.logger;
+const config = ctx.host.config;
+
+// Attempt to mutate throws TypeError
+ctx.host.newKey = 'value'; // ❌ TypeError: Cannot add property
+```
+
+**Use Cases:**
+- Accessing legacy application services from plugins
+- Reading configuration injected by host application
+- Using existing database connections, HTTP clients, etc.
+
+**Security:** The returned object is frozen to prevent mutation. Plugins receive a shallow copy, ensuring isolation between plugins.
+
+##### `introspect`
+
+Exposes the introspection API for querying runtime metadata.
+
+**Type:** `IntrospectionAPI`
+
+**Example:**
+```typescript
+// List all registered resources
+const actions = ctx.introspect.listActions();
+const plugins = ctx.introspect.listPlugins();
+const screens = ctx.introspect.listScreens();
+
+// Get specific metadata
+const actionMeta = ctx.introspect.getActionDefinition('users:load');
+const pluginMeta = ctx.introspect.getPluginDefinition('users');
+const screenMeta = ctx.introspect.getScreenDefinition('users:list');
+
+// Get runtime statistics
+const stats = ctx.introspect.getMetadata();
+console.log(`Runtime v${stats.runtimeVersion} with ${stats.totalPlugins} plugins`);
+```
+
+**Use Cases:**
+- Building admin dashboards
+- Development and debugging tools
+- Dynamic UI generation based on available resources
+- Runtime monitoring and health checks
+
+**Security:** All returned metadata is deeply frozen to prevent mutation of internal state.
 
 ##### `getRuntime(): Runtime`
 
@@ -887,6 +955,8 @@ interface RuntimeContext {
     emitAsync(event: string, data?: unknown): Promise<void>;
     on(event: string, handler: (data: unknown) => void): () => void;
   };
+  readonly host: Readonly<Record<string, unknown>>;
+  readonly introspect: IntrospectionAPI;
   getRuntime(): Runtime;
 }
 ```
@@ -931,6 +1001,255 @@ class CustomLogger implements Logger {
   }
 }
 ```
+
+---
+
+### RuntimeOptions
+
+Configuration options for Runtime initialization.
+
+```typescript
+interface RuntimeOptions {
+  logger?: Logger;
+  hostContext?: Record<string, unknown>;
+}
+```
+
+**Properties:**
+- `logger` (optional): Custom logger implementation (defaults to `ConsoleLogger`)
+- `hostContext` (optional): Host application services to inject into the runtime (defaults to empty object)
+
+**Host Context Usage:**
+
+The `hostContext` option enables legacy applications to inject existing services into the runtime, allowing plugins to access these services without tight coupling. This is particularly useful for incremental migration scenarios.
+
+**Example:**
+```typescript
+// Inject existing services for plugins to use
+const runtime = new Runtime({
+  hostContext: {
+    db: legacyApp.database,
+    logger: legacyApp.logger,
+    cache: legacyApp.cacheService,
+    config: {
+      apiKey: process.env.API_KEY,
+      apiUrl: 'https://api.example.com'
+    }
+  }
+});
+
+await runtime.initialize();
+
+// Plugins can now access these services via context.host
+const myPlugin = {
+  name: 'data-plugin',
+  version: '1.0.0',
+  setup(context) {
+    const db = context.host.db;
+    const config = context.host.config;
+    
+    context.actions.registerAction({
+      id: 'data:load',
+      handler: async () => {
+        return await db.query('SELECT * FROM users');
+      }
+    });
+  }
+};
+```
+
+**Validation Warnings:**
+
+The runtime validates host context and logs warnings for common issues:
+- Objects larger than 1MB (may impact performance)
+- Function values (should be wrapped in objects)
+
+These are warnings only - initialization continues normally.
+
+**Best Practices:**
+- ✅ DO inject: Database connections, HTTP clients, loggers, configuration objects
+- ✅ DO inject: Stateless services and utilities
+- ❌ DON'T inject: Request-scoped data (user sessions, request objects)
+- ❌ DON'T inject: Large objects (> 1MB)
+- ❌ DON'T inject: Functions directly (wrap in objects instead)
+
+---
+
+### IntrospectionAPI
+
+Interface for querying runtime metadata. Accessible via `context.introspect`.
+
+```typescript
+interface IntrospectionAPI {
+  // Action introspection
+  listActions(): string[];
+  getActionDefinition(id: string): ActionMetadata | null;
+  
+  // Plugin introspection
+  listPlugins(): string[];
+  getPluginDefinition(name: string): PluginMetadata | null;
+  
+  // Screen introspection
+  listScreens(): string[];
+  getScreenDefinition(id: string): ScreenDefinition | null;
+  
+  // Runtime introspection
+  getMetadata(): IntrospectionMetadata;
+}
+```
+
+**Methods:**
+
+##### `listActions(): string[]`
+
+Returns an array of all registered action IDs.
+
+**Example:**
+```typescript
+const actionIds = context.introspect.listActions();
+// ['users:load', 'users:create', 'reports:generate']
+```
+
+##### `getActionDefinition(id: string): ActionMetadata | null`
+
+Returns metadata for a specific action, or null if not found. Handler function is excluded.
+
+**Returns:** `ActionMetadata` object or `null`
+
+**Example:**
+```typescript
+const metadata = context.introspect.getActionDefinition('users:load');
+// { id: 'users:load', timeout: 5000 }
+```
+
+##### `listPlugins(): string[]`
+
+Returns an array of all registered plugin names.
+
+**Example:**
+```typescript
+const pluginNames = context.introspect.listPlugins();
+// ['users', 'reports', 'analytics']
+```
+
+##### `getPluginDefinition(name: string): PluginMetadata | null`
+
+Returns metadata for a specific plugin, or null if not found. Setup and dispose functions are excluded.
+
+**Returns:** `PluginMetadata` object or `null`
+
+**Example:**
+```typescript
+const metadata = context.introspect.getPluginDefinition('users');
+// { name: 'users', version: '1.0.0' }
+```
+
+##### `listScreens(): string[]`
+
+Returns an array of all registered screen IDs.
+
+**Example:**
+```typescript
+const screenIds = context.introspect.listScreens();
+// ['users:list', 'users:detail', 'reports:overview']
+```
+
+##### `getScreenDefinition(id: string): ScreenDefinition | null`
+
+Returns the full screen definition, or null if not found.
+
+**Returns:** `ScreenDefinition` object or `null`
+
+**Example:**
+```typescript
+const screen = context.introspect.getScreenDefinition('users:list');
+// { id: 'users:list', title: 'User List', component: UserListComponent }
+```
+
+##### `getMetadata(): IntrospectionMetadata`
+
+Returns overall runtime statistics.
+
+**Returns:** `IntrospectionMetadata` object
+
+**Example:**
+```typescript
+const metadata = context.introspect.getMetadata();
+// {
+//   runtimeVersion: '0.1.0',
+//   totalActions: 15,
+//   totalPlugins: 5,
+//   totalScreens: 8
+// }
+```
+
+**Use Cases:**
+- Building admin dashboards
+- Debugging and development tools
+- Dynamic UI generation
+- Runtime monitoring
+- Plugin discovery
+
+**Security Note:** All returned objects are deeply frozen to prevent mutation of internal runtime state.
+
+---
+
+### ActionMetadata
+
+Metadata for an action definition (excludes handler function).
+
+```typescript
+interface ActionMetadata {
+  id: string;
+  timeout?: number;
+}
+```
+
+**Properties:**
+- `id`: Unique action identifier
+- `timeout` (optional): Timeout in milliseconds
+
+**Note:** The handler function is intentionally excluded from metadata for security and encapsulation.
+
+---
+
+### PluginMetadata
+
+Metadata for a plugin definition (excludes setup and dispose functions).
+
+```typescript
+interface PluginMetadata {
+  name: string;
+  version: string;
+}
+```
+
+**Properties:**
+- `name`: Unique plugin identifier
+- `version`: Plugin version string
+
+**Note:** Setup and dispose functions are intentionally excluded from metadata for security and encapsulation.
+
+---
+
+### IntrospectionMetadata
+
+Overall runtime statistics and metadata.
+
+```typescript
+interface IntrospectionMetadata {
+  runtimeVersion: string;
+  totalActions: number;
+  totalPlugins: number;
+  totalScreens: number;
+}
+```
+
+**Properties:**
+- `runtimeVersion`: Version of the runtime (from package.json)
+- `totalActions`: Count of registered actions
+- `totalPlugins`: Count of registered plugins
+- `totalScreens`: Count of registered screens
 
 ---
 
@@ -1223,6 +1542,125 @@ await runtime.shutdown();
 
 ---
 
+## Migration Support Example
+
+Complete example showing how to use host context injection and introspection for migrating legacy applications:
+
+```typescript
+import { Runtime } from "skeleton-crew";
+
+// Legacy application with existing services
+class LegacyApp {
+  constructor() {
+    this.database = {
+      query: async (sql) => {
+        // Existing database logic
+        return [];
+      }
+    };
+    
+    this.logger = {
+      log: (message) => console.log(`[Legacy] ${message}`)
+    };
+    
+    this.cache = new Map();
+  }
+}
+
+// Create legacy app instance
+const legacyApp = new LegacyApp();
+
+// Create runtime with host context
+const runtime = new Runtime({
+  hostContext: {
+    db: legacyApp.database,
+    logger: legacyApp.logger,
+    cache: legacyApp.cache,
+    config: {
+      apiUrl: 'https://api.example.com',
+      apiKey: process.env.API_KEY
+    }
+  }
+});
+
+// Plugin that uses injected services
+const dataPlugin = {
+  name: 'data-plugin',
+  version: '1.0.0',
+  setup(context) {
+    // Access host services
+    const db = context.host.db;
+    const logger = context.host.logger;
+    const config = context.host.config;
+    
+    // Register action using legacy database
+    context.actions.registerAction({
+      id: 'data:load',
+      handler: async (params) => {
+        logger.log('Loading data...');
+        const results = await db.query('SELECT * FROM users');
+        return results;
+      }
+    });
+    
+    // Use introspection for debugging
+    context.actions.registerAction({
+      id: 'debug:info',
+      handler: () => {
+        const metadata = context.introspect.getMetadata();
+        logger.log(`Runtime v${metadata.runtimeVersion}`);
+        logger.log(`Actions: ${metadata.totalActions}`);
+        logger.log(`Plugins: ${metadata.totalPlugins}`);
+        
+        const actions = context.introspect.listActions();
+        logger.log(`Available actions: ${actions.join(', ')}`);
+        
+        return metadata;
+      }
+    });
+  }
+};
+
+// Initialize runtime
+runtime.registerPlugin(dataPlugin);
+await runtime.initialize();
+
+const context = runtime.getContext();
+
+// Use the plugin
+const data = await context.actions.runAction('data:load');
+const debugInfo = await context.actions.runAction('debug:info');
+
+// Introspection from outside plugins
+console.log('All registered actions:', context.introspect.listActions());
+console.log('All registered plugins:', context.introspect.listPlugins());
+
+const actionMeta = context.introspect.getActionDefinition('data:load');
+console.log('Action metadata:', actionMeta);
+// { id: 'data:load', timeout: undefined }
+
+// Host context is immutable
+try {
+  context.host.newService = {}; // ❌ Throws TypeError
+} catch (error) {
+  console.log('Host context is immutable:', error.message);
+}
+
+// Cleanup
+await runtime.shutdown();
+```
+
+**Key Points:**
+
+1. **Host Context Injection**: Legacy services are injected via `hostContext` option
+2. **Plugin Access**: Plugins access services via `context.host`
+3. **Immutability**: Host context is frozen to prevent mutation
+4. **Introspection**: Query runtime state via `context.introspect`
+5. **Metadata Only**: Introspection returns metadata without function implementations
+6. **Deep Freeze**: All introspection results are deeply frozen
+
+---
+
 ## Event Reference
 
 ### Built-in Events
@@ -1276,6 +1714,22 @@ ctx.events.on("runtime:shutdown", (data) => {
 3. **Handle errors gracefully** in event handlers
 4. **Use typed actions** for better type safety
 5. **Namespace your screen and action IDs** (e.g., "myplugin:screen-name")
+
+### Host Context Injection
+
+1. **DO inject stateless services**: Database connections, HTTP clients, loggers, configuration
+2. **DON'T inject request-scoped data**: User sessions, request objects, temporary state
+3. **DON'T inject large objects**: Keep host context under 1MB for performance
+4. **Wrap functions in objects**: Instead of `{ fn: () => {} }`, use `{ service: { fn: () => {} } }`
+5. **Treat as immutable**: Never attempt to modify `context.host` in plugins
+
+### Introspection Usage
+
+1. **Use for debugging and tooling**: Admin dashboards, development tools, monitoring
+2. **Don't rely on implementation details**: Metadata excludes functions intentionally
+3. **Handle null returns**: Resources may not exist, always check for null
+4. **Leverage deep freeze**: Returned objects are safe to pass around without copying
+5. **Query efficiently**: Introspection is fast (< 1ms) but avoid unnecessary queries in hot paths
 
 ### Error Handling
 

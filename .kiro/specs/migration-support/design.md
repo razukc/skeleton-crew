@@ -249,6 +249,10 @@ RuntimeContext.introspect getter
 
 **Validates: Requirements 1.3, 1.4**
 
+**Requirement Details:**
+- 1.3: Plugin accessing context.host SHALL return a frozen copy
+- 1.4: Mutation attempts SHALL throw an error
+
 **Test Strategy:**
 - Generate random host context objects
 - Create runtime with each context
@@ -262,6 +266,10 @@ RuntimeContext.introspect getter
 *For any* two Runtime instances with different host contexts, each instance's plugins should only access their own host context.
 
 **Validates: Requirements 1.1, 1.2**
+
+**Requirement Details:**
+- 1.1: Runtime SHALL store the provided context object
+- 1.2: Runtime SHALL pass the host context to RuntimeContext
 
 **Test Strategy:**
 - Create two runtimes with different contexts
@@ -277,6 +285,14 @@ RuntimeContext.introspect getter
 
 **Validates: Requirements 3.5, 4.5, 5.5, 7.1, 7.2, 7.3**
 
+**Requirement Details:**
+- 3.5: Action metadata SHALL be deep frozen
+- 4.5: Plugin metadata SHALL be deep frozen
+- 5.5: Screen metadata SHALL be deep frozen
+- 7.1: Deep freeze SHALL freeze the object itself
+- 7.2: Deep freeze SHALL recursively freeze nested objects
+- 7.3: Deep freeze SHALL freeze arrays
+
 **Test Strategy:**
 - Query all introspection methods
 - Attempt to mutate returned objects
@@ -290,6 +306,11 @@ RuntimeContext.introspect getter
 *For any* registered resource (action, plugin, screen), introspection should return metadata that accurately reflects the resource's properties.
 
 **Validates: Requirements 3.2, 4.2, 5.2**
+
+**Requirement Details:**
+- 3.2: getActionDefinition SHALL return frozen object with id and timeout
+- 4.2: getPluginDefinition SHALL return frozen object with name and version
+- 5.2: getScreenDefinition SHALL return frozen copy of screen definition
 
 **Test Strategy:**
 - Register resources with known properties
@@ -305,6 +326,10 @@ RuntimeContext.introspect getter
 
 **Validates: Requirements 3.4, 4.4**
 
+**Requirement Details:**
+- 3.4: Action metadata SHALL NOT include the handler function
+- 4.4: Plugin metadata SHALL NOT include setup or dispose functions
+
 **Test Strategy:**
 - Register resources with handlers
 - Query via introspection
@@ -319,6 +344,13 @@ RuntimeContext.introspect getter
 
 **Validates: Requirements 8.1, 8.2, 8.3, 8.4, 8.5**
 
+**Requirement Details:**
+- 8.1: Runtime without hostContext SHALL initialize successfully
+- 8.2: Existing Runtime APIs SHALL behave identically
+- 8.3: RuntimeContext SHALL provide all existing APIs unchanged
+- 8.4: Existing tests SHALL pass without modifications
+- 8.5: New APIs SHALL NOT modify or remove existing APIs
+
 **Test Strategy:**
 - Run all existing tests
 - Create runtime without hostContext
@@ -332,6 +364,10 @@ RuntimeContext.introspect getter
 *For any* host context (valid or invalid), validation warnings should not prevent runtime initialization or modify the context.
 
 **Validates: Requirements 2.3, 2.4**
+
+**Requirement Details:**
+- 2.3: Validation warnings SHALL continue initialization without throwing errors
+- 2.4: Validation SHALL not modify the provided context object
 
 **Test Strategy:**
 - Provide contexts with large objects
@@ -600,6 +636,8 @@ npm test
 
 **Performance Impact:** < 1ms
 
+**Requirement:** Requirement 11.1 - Initialization time increase < 1ms
+
 **Optimization:**
 - Only validate on construction (once)
 - Use JSON.stringify for size check (fast)
@@ -609,16 +647,22 @@ npm test
 if (Object.keys(context).length === 0) return; // Fast path
 ```
 
+**Rationale:** Validation happens once during initialization, so the overhead is amortized across the application lifetime. JSON.stringify is native and highly optimized.
+
 ---
 
 ### Introspection Queries
 
 **Performance Impact:** < 1ms per query
 
+**Requirement:** Requirement 11.2 - Query completion < 1ms for typical applications
+
 **Optimization:**
 - Use existing registry methods (already O(1) or O(n))
 - Deep freeze only returned objects (not internal state)
 - Cache frozen objects if needed (future optimization)
+
+**Rationale:** Registry lookups use Map-based storage (O(1) for get operations). Deep freeze only processes the small metadata objects being returned, not the entire registry.
 
 ---
 
@@ -626,10 +670,14 @@ if (Object.keys(context).length === 0) return; // Fast path
 
 **Performance Impact:** Negligible for typical metadata
 
+**Requirement:** Requirement 11.3 - No measurable performance degradation
+
 **Optimization:**
 - Skip already frozen objects
 - Skip functions (cannot freeze)
 - Shallow copy before freezing (prevents internal mutation)
+
+**Rationale:** Metadata objects are small (typically < 1KB). The recursive freeze operation is fast for small objects and only runs when metadata is requested.
 
 ---
 
@@ -637,11 +685,15 @@ if (Object.keys(context).length === 0) return; // Fast path
 
 **Estimated Increase:** < 100KB
 
+**Requirement:** Requirement 12.1 - Base runtime memory increase < 100KB
+
 **Breakdown:**
 - Host context reference: ~8 bytes
 - Introspection API object: ~200 bytes
 - Metadata interfaces: ~0 bytes (types only)
 - Deep freeze overhead: ~10% of metadata size
+
+**Rationale:** We store only references to host context (not copies). Introspection API is a lightweight object with method references. Frozen metadata creates minimal overhead since we use shallow copies.
 
 ---
 
@@ -651,6 +703,8 @@ if (Object.keys(context).length === 0) return; // Fast path
 
 **Threat:** Plugin mutates host context
 
+**Requirement:** Requirement 13.1 - Host context immutable after initialization
+
 **Mitigation:** Return frozen shallow copy
 
 ```typescript
@@ -659,11 +713,15 @@ get host(): Readonly<Record<string, unknown>> {
 }
 ```
 
+**Rationale:** Shallow copy prevents plugins from holding a reference to the internal context. Object.freeze prevents mutation of the copy. This ensures plugins cannot affect other plugins' view of the host context.
+
 ---
 
 ### Introspection Security
 
 **Threat:** Plugin accesses handler implementations
+
+**Requirement:** Requirement 13.2 - No exposure of function implementations
 
 **Mitigation:** Return metadata only, exclude functions
 
@@ -675,17 +733,23 @@ return action; // ❌ Exposes handler
 return { id: action.id, timeout: action.timeout }; // ✅
 ```
 
+**Rationale:** Exposing handler functions would allow plugins to inspect or modify other plugins' behavior. Metadata-only approach maintains encapsulation and prevents security vulnerabilities.
+
 ---
 
 ### Metadata Mutation
 
 **Threat:** Plugin mutates returned metadata
 
+**Requirement:** Requirement 13.3 - No mutation of internal runtime state
+
 **Mitigation:** Deep freeze all returned objects
 
 ```typescript
 return deepFreeze({ id: action.id, timeout: action.timeout });
 ```
+
+**Rationale:** Deep freeze ensures that even nested objects in metadata cannot be mutated. This prevents plugins from corrupting the runtime's internal state through metadata references.
 
 ---
 
@@ -701,6 +765,8 @@ return deepFreeze({ id: action.id, timeout: action.timeout });
 
 **Files:** `src/types.ts`
 
+**Requirements Addressed:** 1.1, 9.1, 9.2, 9.3, 9.4, 9.5
+
 ---
 
 ### Phase 2: Runtime Changes (Day 2)
@@ -711,6 +777,8 @@ return deepFreeze({ id: action.id, timeout: action.timeout });
 4. Add tests
 
 **Files:** `src/runtime.ts`, `tests/unit/host-context.test.ts`
+
+**Requirements Addressed:** 1.1, 1.2, 1.5, 2.1, 2.2, 2.3, 2.4
 
 ---
 
@@ -724,6 +792,8 @@ return deepFreeze({ id: action.id, timeout: action.timeout });
 
 **Files:** `src/runtime-context.ts`, `tests/unit/introspection.test.ts`
 
+**Requirements Addressed:** 1.3, 1.4, 3.1-3.5, 4.1-4.5, 5.1-5.5, 6.1-6.5, 7.1-7.5
+
 ---
 
 ### Phase 4: Testing (Day 5-6)
@@ -736,6 +806,8 @@ return deepFreeze({ id: action.id, timeout: action.timeout });
 
 **Files:** `tests/unit/`, `tests/property/`, `tests/integration/`
 
+**Requirements Addressed:** 8.1-8.5, 11.1-11.3, 12.1-12.3, 13.1-13.3, 14.1-14.3
+
 ---
 
 ### Phase 5: Documentation (Day 7)
@@ -747,6 +819,247 @@ return deepFreeze({ id: action.id, timeout: action.timeout });
 5. Document best practices
 
 **Files:** `docs/api/API.md`, `docs/guides/migration-guide.md`, `README.md`
+
+**Requirements Addressed:** 10.1-10.5
+
+---
+
+## Non-Functional Requirements Compliance
+
+### Performance Requirements (Requirement 11)
+
+**11.1 - Initialization Time:**
+- Target: < 1ms increase
+- Implementation: Validation runs once during construction
+- Measurement: Benchmark Runtime initialization with/without hostContext
+
+**11.2 - Query Performance:**
+- Target: < 1ms per query for typical applications (< 100 resources)
+- Implementation: O(1) Map lookups, minimal object creation
+- Measurement: Benchmark introspection queries with 100 registered resources
+
+**11.3 - Deep Freeze Performance:**
+- Target: No measurable degradation
+- Implementation: Only freeze small metadata objects, skip already frozen
+- Measurement: Benchmark deep freeze on typical metadata objects
+
+---
+
+### Memory Requirements (Requirement 12)
+
+**12.1 - Base Memory Increase:**
+- Target: < 100KB
+- Implementation: Store references only, no large data structures
+- Measurement: Memory profiler before/after feature addition
+
+**12.2 - No Large Object Duplication:**
+- Target: Avoid duplicating large objects
+- Implementation: Shallow copy for host context, reference-based introspection
+- Measurement: Memory profiler during introspection queries
+
+**12.3 - Freeze Memory Overhead:**
+- Target: Minimal overhead
+- Implementation: Freeze only returned copies, not internal state
+- Measurement: Memory profiler comparing frozen vs unfrozen objects
+
+---
+
+### Security Requirements (Requirement 13)
+
+**13.1 - Host Context Immutability:**
+- Implementation: Object.freeze on shallow copy
+- Verification: Unit tests attempting mutation
+- Property test: Random mutations on random contexts
+
+**13.2 - No Function Exposure:**
+- Implementation: Metadata extraction excludes functions
+- Verification: Unit tests checking typeof on all properties
+- Property test: Verify no functions in any introspection result
+
+**13.3 - No Internal State Mutation:**
+- Implementation: Deep freeze all returned metadata
+- Verification: Unit tests attempting nested mutations
+- Property test: Random mutations at all nesting levels
+
+---
+
+### Compatibility Requirements (Requirement 14)
+
+**14.1 - Backward Compatible Changes:**
+- Implementation: All new features are optional/additive
+- Verification: Run full existing test suite
+- Measurement: Zero test modifications required
+
+**14.2 - Existing Tests Pass:**
+- Implementation: No changes to existing behavior
+- Verification: CI/CD pipeline with existing tests
+- Measurement: 100% existing test pass rate
+
+**14.3 - Type Compatibility:**
+- Implementation: Extend interfaces, don't modify existing
+- Verification: TypeScript compilation of existing code
+- Measurement: Zero type errors in existing code
+
+---
+
+### Documentation Requirements (Requirement 10)
+
+**10.1 - API Reference for hostContext:**
+```typescript
+// Example to be included in docs/api/API.md
+const runtime = new Runtime({
+  hostContext: {
+    db: databaseConnection,
+    logger: applicationLogger,
+    cache: cacheInstance
+  }
+});
+```
+
+**10.2 - API Reference for Introspection:**
+```typescript
+// Example to be included in docs/api/API.md
+const context = runtime.getContext();
+
+// List all actions
+const actions = context.introspect.listActions();
+
+// Get action metadata
+const metadata = context.introspect.getActionDefinition('my:action');
+// Returns: { id: 'my:action', timeout: 5000 }
+```
+
+**10.3 - Migration Guide Level 0:**
+```typescript
+// Example to be included in docs/guides/migration-guide.md
+// Level 0: Zero Migration - Just inject existing services
+const runtime = new Runtime({
+  hostContext: {
+    db: legacyApp.database,
+    api: legacyApp.apiClient
+  }
+});
+
+// Plugins can now access legacy services
+const plugin = {
+  name: 'bridge-plugin',
+  version: '1.0.0',
+  setup(context) {
+    const db = context.host.db;
+    // Use legacy database without modification
+  }
+};
+```
+
+**10.4 - Host Context Best Practices:**
+- DO inject: Stateless services (DB connections, HTTP clients, loggers)
+- DO inject: Configuration objects (API keys, endpoints)
+- DON'T inject: Request-scoped data (user sessions, request objects)
+- DON'T inject: Large objects (> 1MB)
+- DON'T inject: Functions directly (wrap in objects)
+
+**10.5 - Anti-Patterns:**
+```typescript
+// ❌ DON'T: Inject request data
+const runtime = new Runtime({
+  hostContext: { currentUser, currentRequest } // Changes per request!
+});
+
+// ❌ DON'T: Inject large objects
+const runtime = new Runtime({
+  hostContext: { hugeDataset: [...] } // > 1MB
+});
+
+// ❌ DON'T: Inject bare functions
+const runtime = new Runtime({
+  hostContext: { queryDb: () => {} } // Wrap in object instead
+});
+
+// ✅ DO: Inject services
+const runtime = new Runtime({
+  hostContext: {
+    db: { query: () => {} }, // Wrapped in object
+    config: { apiKey: '...' } // Configuration
+  }
+});
+```
+
+---
+
+## Requirements Traceability Matrix
+
+This section maps each requirement to its implementation in the design.
+
+### Functional Requirements
+
+| Requirement | Design Section | Correctness Property |
+|-------------|----------------|---------------------|
+| 1.1 - Store hostContext | Runtime Constructor, RuntimeOptions Enhancement | Property 2 |
+| 1.2 - Pass to RuntimeContext | Runtime Constructor, RuntimeContext Enhancement | Property 2 |
+| 1.3 - Return frozen copy | RuntimeContext Enhancement, host getter | Property 1 |
+| 1.4 - Prevent mutation | RuntimeContext Enhancement, host getter | Property 1 |
+| 1.5 - Default empty object | Runtime Constructor | Property 6 |
+| 2.1 - Warn large objects | Error Handling - Validation Errors | Property 7 |
+| 2.2 - Warn function values | Error Handling - Validation Errors | Property 7 |
+| 2.3 - Continue without errors | Error Handling - Validation Errors | Property 7 |
+| 2.4 - Don't modify context | Error Handling - Validation Errors | Property 7 |
+| 3.1 - listActions() | IntrospectionAPI Interface, Components | Property 4 |
+| 3.2 - getActionDefinition() | IntrospectionAPI Interface, Components | Property 4 |
+| 3.3 - Return null for invalid | Error Handling - Introspection Errors | - |
+| 3.4 - No handler function | IntrospectionAPI Interface, Metadata Interfaces | Property 5 |
+| 3.5 - Deep freeze metadata | IntrospectionAPI Interface, Deep Freeze | Property 3 |
+| 4.1 - listPlugins() | IntrospectionAPI Interface, Components | Property 4 |
+| 4.2 - getPluginDefinition() | IntrospectionAPI Interface, Components | Property 4 |
+| 4.3 - Return null for invalid | Error Handling - Introspection Errors | - |
+| 4.4 - No setup/dispose | IntrospectionAPI Interface, Metadata Interfaces | Property 5 |
+| 4.5 - Deep freeze metadata | IntrospectionAPI Interface, Deep Freeze | Property 3 |
+| 5.1 - listScreens() | IntrospectionAPI Interface, Components | Property 4 |
+| 5.2 - getScreenDefinition() | IntrospectionAPI Interface, Components | Property 4 |
+| 5.3 - Return null for invalid | Error Handling - Introspection Errors | - |
+| 5.4 - Include all properties | IntrospectionAPI Interface, Metadata Interfaces | Property 4 |
+| 5.5 - Deep freeze metadata | IntrospectionAPI Interface, Deep Freeze | Property 3 |
+| 6.1 - getMetadata() | IntrospectionAPI Interface, Components | - |
+| 6.2 - Include runtimeVersion | Metadata Interfaces | - |
+| 6.3 - Include totalActions | Metadata Interfaces | - |
+| 6.4 - Include totalPlugins | Metadata Interfaces | - |
+| 6.5 - Include totalScreens | Metadata Interfaces | - |
+| 7.1 - Freeze object itself | Data Models - Deep Freeze | Property 3 |
+| 7.2 - Recursively freeze nested | Data Models - Deep Freeze | Property 3 |
+| 7.3 - Freeze arrays | Data Models - Deep Freeze | Property 3 |
+| 7.4 - Skip functions | Data Models - Deep Freeze | - |
+| 7.5 - Skip already frozen | Data Models - Deep Freeze | - |
+| 8.1 - Initialize without hostContext | RuntimeOptions Enhancement | Property 6 |
+| 8.2 - Existing APIs unchanged | All Components | Property 6 |
+| 8.3 - RuntimeContext unchanged | RuntimeContext Enhancement | Property 6 |
+| 8.4 - Existing tests pass | Testing Strategy | Property 6 |
+| 8.5 - No API removal | All Components | Property 6 |
+| 9.1 - RuntimeOptions types | RuntimeOptions Enhancement | - |
+| 9.2 - context.host types | RuntimeContext Enhancement | - |
+| 9.3 - IntrospectionAPI types | IntrospectionAPI Interface | - |
+| 9.4 - Metadata types | Metadata Interfaces | - |
+| 9.5 - Backward compatible types | All Components | Property 6 |
+| 10.1 - hostContext API docs | Non-Functional Requirements Compliance | - |
+| 10.2 - Introspection API docs | Non-Functional Requirements Compliance | - |
+| 10.3 - Migration guide Level 0 | Non-Functional Requirements Compliance | - |
+| 10.4 - Best practices docs | Non-Functional Requirements Compliance | - |
+| 10.5 - Anti-patterns docs | Non-Functional Requirements Compliance | - |
+
+### Non-Functional Requirements
+
+| Requirement | Design Section | Verification Method |
+|-------------|----------------|---------------------|
+| 11.1 - Init time < 1ms | Performance Considerations | Benchmark |
+| 11.2 - Query time < 1ms | Performance Considerations | Benchmark |
+| 11.3 - No degradation | Performance Considerations | Benchmark |
+| 12.1 - Memory < 100KB | Performance Considerations | Memory Profiler |
+| 12.2 - No duplication | Performance Considerations | Memory Profiler |
+| 12.3 - Minimal freeze overhead | Performance Considerations | Memory Profiler |
+| 13.1 - Context immutable | Security Considerations | Unit + Property Tests |
+| 13.2 - No function exposure | Security Considerations | Unit + Property Tests |
+| 13.3 - No state mutation | Security Considerations | Unit + Property Tests |
+| 14.1 - Backward compatible | All Components | Existing Test Suite |
+| 14.2 - Tests pass | Testing Strategy | CI/CD Pipeline |
+| 14.3 - Type compatibility | All Components | TypeScript Compiler |
 
 ---
 
@@ -840,24 +1153,39 @@ const plugin = {
 
 ### Technical Metrics
 
-- ✅ Core size increase < 1KB
-- ✅ Zero breaking changes
-- ✅ All existing tests pass
-- ✅ New tests coverage > 90%
-- ✅ Performance overhead < 1ms
-- ✅ Memory increase < 100KB
+- ✅ Core size increase < 1KB (Success Criteria #2)
+- ✅ Zero breaking changes (Success Criteria #1, Requirement 8, 14)
+- ✅ All existing tests pass (Success Criteria #3, Requirement 8.4, 14.2)
+- ✅ New tests coverage > 90% (Success Criteria #4)
+- ✅ Performance overhead < 1ms (Requirement 11.1, 11.2)
+- ✅ Memory increase < 100KB (Requirement 12.1)
 
 ### Quality Metrics
 
-- ✅ Philosophy alignment > 95%
-- ✅ Documentation complete
-- ✅ All properties validated
-- ✅ Security reviewed
-- ✅ Code review passed
+- ✅ Philosophy alignment > 95% (Success Criteria #6)
+- ✅ Documentation complete (Success Criteria #5, Requirement 10)
+- ✅ All properties validated (Design correctness properties)
+- ✅ Security reviewed (Requirement 13)
+- ✅ Code review passed (All requirements verified)
+
+### Backward Compatibility Verification
+
+- ✅ Runtime without hostContext works (Requirement 8.1)
+- ✅ Existing APIs unchanged (Requirement 8.2, 8.3, 8.5)
+- ✅ TypeScript types compatible (Requirement 9.5, 14.3)
+- ✅ No breaking type changes (Requirement 14.3)
+
+### Non-Functional Requirements Verification
+
+- ✅ Performance constraints met (Requirement 11)
+- ✅ Memory constraints met (Requirement 12)
+- ✅ Security constraints met (Requirement 13)
+- ✅ Compatibility constraints met (Requirement 14)
 
 ---
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Status:** READY FOR IMPLEMENTATION
 **Date:** 2024
+**Last Updated:** Requirements alignment verification completed
 

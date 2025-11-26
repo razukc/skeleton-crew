@@ -1,4 +1,4 @@
-import type { RuntimeContext, UIProvider, PluginDefinition, Logger } from './types.js';
+import type { RuntimeContext, UIProvider, PluginDefinition, RuntimeOptions, Logger } from './types.js';
 import { ConsoleLogger, RuntimeState } from './types.js';
 import { PluginRegistry } from './plugin-registry.js';
 import { ScreenRegistry } from './screen-registry.js';
@@ -24,17 +24,56 @@ export class Runtime {
   private pendingPlugins: PluginDefinition[] = [];
   private logger: Logger;
   private state: RuntimeState = RuntimeState.Uninitialized;
+  private hostContext: Record<string, unknown>;
 
   /**
-   * Creates a new Runtime instance with optional logger.
+   * Creates a new Runtime instance with optional configuration.
    * 
    * @param options - Optional configuration object
    * @param options.logger - Custom logger implementation (defaults to ConsoleLogger)
+   * @param options.hostContext - Host application services to inject (defaults to empty object)
    * 
-   * Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
+   * Requirements: 1.1, 1.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6
    */
-  constructor(options?: { logger?: Logger }) {
+  constructor(options?: RuntimeOptions) {
     this.logger = options?.logger ?? new ConsoleLogger();
+    this.hostContext = options?.hostContext ?? {};
+    this.validateHostContext(this.hostContext);
+  }
+
+  /**
+   * Validates host context and logs warnings for common mistakes.
+   * Does not throw errors or modify the context.
+   * 
+   * @param context - The host context to validate
+   * 
+   * Requirements: 2.1, 2.2, 2.3, 2.4
+   */
+  private validateHostContext(context: Record<string, unknown>): void {
+    // Fast path for empty context
+    if (Object.keys(context).length === 0) {
+      return;
+    }
+
+    // Check each key in the context
+    Object.entries(context).forEach(([key, value]) => {
+      // Check for large objects (> 1MB)
+      try {
+        const size = JSON.stringify(value).length;
+        if (size > 1024 * 1024) {
+          this.logger.warn(`Host context key "${key}" is large (${size} bytes)`);
+        }
+      } catch (error) {
+        // JSON.stringify can fail for circular references or other issues
+        // Log but don't fail validation
+        this.logger.warn(`Host context key "${key}" could not be serialized for size check`);
+      }
+
+      // Check for function values
+      if (typeof value === 'function') {
+        this.logger.warn(`Host context key "${key}" is a function. Consider wrapping it in an object.`);
+      }
+    });
   }
 
   /**
@@ -94,13 +133,14 @@ export class Runtime {
       // 5. Create UIBridge
       this.ui = new UIBridge(this.logger);
       
-      // 6. Create RuntimeContext after all subsystems (Requirements 2.4, 9.7)
+      // 6. Create RuntimeContext after all subsystems (Requirements 1.2, 2.4, 9.7)
       this.context = new RuntimeContextImpl(
         this.screens,
         this.actions,
         this.plugins,
         this.events,
-        this
+        this,
+        this.hostContext
       );
       
       // 7. Pass RuntimeContext to ActionEngine (Requirement 9.9)

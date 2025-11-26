@@ -14,7 +14,12 @@ export type {
   ActionDefinition,
   UIProvider,
   RuntimeContext,
-  Logger
+  Logger,
+  RuntimeOptions,
+  ActionMetadata,
+  PluginMetadata,
+  IntrospectionMetadata,
+  IntrospectionAPI
 } from './types.js';
 
 export {

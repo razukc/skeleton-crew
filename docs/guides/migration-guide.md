@@ -73,6 +73,363 @@ Consider waiting if your application is:
 
 ## Migration Strategies
 
+### Level 0: Zero Migration (Host Context Injection)
+
+**Best for**: Quick wins, proof of concept, minimal risk adoption
+
+Inject your existing services into Skeleton Crew without changing any legacy code. This is the fastest way to start using Skeleton Crew and enables plugins to access your existing infrastructure.
+
+**How it works:**
+1. Create Runtime with `hostContext` containing your existing services
+2. Plugins access services via `context.host`
+3. Legacy code continues working unchanged
+4. New features can be built as plugins immediately
+
+```typescript
+import { Runtime } from 'skeleton-crew-runtime';
+
+// Your existing application
+class LegacyApp {
+  constructor() {
+    this.database = new DatabaseConnection();
+    this.logger = new Logger();
+    this.cache = new CacheService();
+    this.apiClient = new APIClient();
+  }
+  
+  // Existing methods continue working
+  async loadUsers() {
+    return await this.database.query('SELECT * FROM users');
+  }
+}
+
+// Create legacy app
+const legacyApp = new LegacyApp();
+
+// Create runtime with host context - NO CHANGES to legacy code
+const runtime = new Runtime({
+  hostContext: {
+    db: legacyApp.database,
+    logger: legacyApp.logger,
+    cache: legacyApp.cache,
+    api: legacyApp.apiClient,
+    config: {
+      apiUrl: process.env.API_URL,
+      apiKey: process.env.API_KEY
+    }
+  }
+});
+
+// New plugin can use existing services immediately
+const newFeaturePlugin = {
+  name: 'new-feature',
+  version: '1.0.0',
+  setup(context) {
+    // Access legacy services
+    const db = context.host.db;
+    const logger = context.host.logger;
+    const cache = context.host.cache;
+    
+    // Build new feature using existing infrastructure
+    context.actions.registerAction({
+      id: 'feature:execute',
+      handler: async (params) => {
+        logger.log('Executing new feature...');
+        
+        // Check cache first
+        const cached = cache.get('feature-data');
+        if (cached) return cached;
+        
+        // Use existing database
+        const data = await db.query('SELECT * FROM feature_data');
+        cache.set('feature-data', data);
+        
+        return data;
+      }
+    });
+  }
+};
+
+await runtime.registerPlugin(newFeaturePlugin);
+await runtime.initialize();
+
+// Legacy code still works
+const users = await legacyApp.loadUsers();
+
+// New plugin works too
+const featureData = await runtime.getContext().actions.runAction('feature:execute');
+```
+
+**Pros:**
+- ✅ Zero changes to legacy code
+- ✅ Immediate access to existing services
+- ✅ New features can be built as plugins right away
+- ✅ No risk to existing functionality
+- ✅ Easy to demonstrate value quickly
+
+**Cons:**
+- ⚠️ Legacy code not yet modular
+- ⚠️ Still have two architectural patterns
+- ⚠️ Need to migrate eventually for full benefits
+
+**When to use:**
+- Proving Skeleton Crew value to stakeholders
+- Building new features while planning migration
+- Low-risk initial adoption
+- Time-constrained projects
+
+**Host Context Best Practices:**
+
+**✅ DO Inject:**
+```typescript
+const runtime = new Runtime({
+  hostContext: {
+    // Database connections
+    db: postgresConnection,
+    
+    // HTTP clients
+    api: axios.create({ baseURL: 'https://api.example.com' }),
+    
+    // Loggers
+    logger: winston.createLogger({ ... }),
+    
+    // Cache services
+    cache: redisClient,
+    
+    // Configuration objects
+    config: {
+      apiKey: process.env.API_KEY,
+      features: { newFeature: true }
+    },
+    
+    // Stateless utilities
+    utils: {
+      formatDate: (date) => date.toISOString(),
+      validateEmail: (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    }
+  }
+});
+```
+
+**❌ DON'T Inject:**
+```typescript
+const runtime = new Runtime({
+  hostContext: {
+    // ❌ Request-scoped data (changes per request)
+    currentUser: req.user,
+    currentRequest: req,
+    
+    // ❌ Large objects (> 1MB)
+    hugeDataset: [...millionsOfRecords],
+    
+    // ❌ Functions directly (wrap in objects)
+    queryDatabase: () => {},  // Bad
+    
+    // ❌ UI state
+    selectedTab: 'home',
+    isModalOpen: true,
+    
+    // ❌ Temporary data
+    uploadProgress: 0.5,
+    pendingOperations: []
+  }
+});
+```
+
+**Validation Warnings:**
+
+The runtime validates host context and logs warnings:
+
+```typescript
+const runtime = new Runtime({
+  hostContext: {
+    // Warning: Large object (> 1MB)
+    largeData: hugeObject,  // ⚠️ Logs warning with size
+    
+    // Warning: Function value
+    myFunction: () => {},   // ⚠️ Logs warning to wrap in object
+  }
+});
+
+// Warnings are logged but initialization continues
+await runtime.initialize(); // ✅ Still works
+```
+
+**How to address warnings:**
+
+```typescript
+// Before: Function warning
+hostContext: {
+  queryDb: () => {}  // ⚠️ Warning
+}
+
+// After: Wrapped in object
+hostContext: {
+  db: {
+    query: () => {}  // ✅ No warning
+  }
+}
+
+// Before: Large object warning
+hostContext: {
+  data: hugeObject  // ⚠️ Warning if > 1MB
+}
+
+// After: Use reference or lazy loading
+hostContext: {
+  dataLoader: {
+    load: () => hugeObject  // ✅ Lazy load when needed
+  }
+}
+```
+
+**Real-World Examples:**
+
+**Example 1: Browser Extension**
+```typescript
+// Existing extension background script
+const extensionServices = {
+  tabs: chrome.tabs,
+  storage: chrome.storage.local,
+  notifications: chrome.notifications
+};
+
+const runtime = new Runtime({
+  hostContext: {
+    chrome: extensionServices,
+    config: {
+      maxTabs: 100,
+      notificationTimeout: 5000
+    }
+  }
+});
+
+// Plugin uses Chrome APIs via host context
+const tabManagerPlugin = {
+  name: 'tab-manager',
+  version: '1.0.0',
+  setup(context) {
+    const chrome = context.host.chrome;
+    
+    context.actions.registerAction({
+      id: 'tabs:query',
+      handler: async (filter) => {
+        return new Promise((resolve) => {
+          chrome.tabs.query(filter, resolve);
+        });
+      }
+    });
+  }
+};
+```
+
+**Example 2: Express.js Application**
+```typescript
+// Existing Express app
+const app = express();
+const db = new Database();
+const logger = new Logger();
+
+const runtime = new Runtime({
+  hostContext: {
+    db,
+    logger,
+    config: {
+      port: process.env.PORT,
+      env: process.env.NODE_ENV
+    }
+  }
+});
+
+// Plugin builds new API endpoint
+const apiPlugin = {
+  name: 'api',
+  version: '1.0.0',
+  setup(context) {
+    const db = context.host.db;
+    const logger = context.host.logger;
+    
+    context.actions.registerAction({
+      id: 'api:getUsers',
+      handler: async () => {
+        logger.info('Fetching users');
+        return await db.query('SELECT * FROM users');
+      }
+    });
+  }
+};
+
+// Mount plugin actions as Express routes
+app.get('/api/users', async (req, res) => {
+  const users = await runtime.getContext().actions.runAction('api:getUsers');
+  res.json(users);
+});
+```
+
+**Example 3: React Application**
+```typescript
+// Existing React app with services
+const appServices = {
+  api: axios.create({ baseURL: '/api' }),
+  auth: new AuthService(),
+  analytics: new AnalyticsService()
+};
+
+const runtime = new Runtime({
+  hostContext: {
+    services: appServices,
+    config: {
+      apiUrl: process.env.REACT_APP_API_URL
+    }
+  }
+});
+
+// Plugin for new feature
+const dashboardPlugin = {
+  name: 'dashboard',
+  version: '1.0.0',
+  setup(context) {
+    const api = context.host.services.api;
+    const analytics = context.host.services.analytics;
+    
+    context.actions.registerAction({
+      id: 'dashboard:load',
+      handler: async () => {
+        analytics.track('dashboard_loaded');
+        const response = await api.get('/dashboard');
+        return response.data;
+      }
+    });
+  }
+};
+
+// Use in React component
+function Dashboard() {
+  const [data, setData] = useState(null);
+  
+  useEffect(() => {
+    runtime.getContext().actions.runAction('dashboard:load')
+      .then(setData);
+  }, []);
+  
+  return <div>{/* Render dashboard */}</div>;
+}
+```
+
+**Next Steps After Level 0:**
+
+Once you've proven the value with host context injection:
+
+1. **Identify features to migrate** - Start with least coupled features
+2. **Extract to plugins** - Move logic from legacy code to plugins
+3. **Use events for communication** - Replace direct calls with events
+4. **Gradually remove legacy code** - As features migrate, delete old code
+5. **Achieve full modularity** - Eventually all features are plugins
+
+See the patterns below for incremental migration strategies.
+
+---
+
 ### 1. Gradual Migration Pattern
 
 **Best for**: Most applications, especially those with clear feature boundaries

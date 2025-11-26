@@ -230,7 +230,7 @@
   - Display error messages for invalid input
   - _Requirements: 3.2, 3.4, 3.5_
 
-- [ ] 8. Implement Terminal UI Provider - Event Logging
+- [x] 8. Implement Terminal UI Provider - Event Logging
   - Implement logEvent method to add events to eventLog array
   - Subscribe to counter:changed and settings:changed events in mount method
   - Display event logs in formatted output with event name and data
@@ -302,7 +302,7 @@
   - Test that events emitted by plugins are received by UI provider
   - _Requirements: 6.2, 6.3, 6.4_
 
-- [ ] 11. Checkpoint - Ensure all tests pass
+- [x] 11. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 12. Add example app documentation
@@ -320,7 +320,7 @@
   - Add code comments explaining key concepts
   - _Requirements: 1.1, 9.1, 9.2, 9.3, 9.4, 9.5_
 
-- [ ] 13. Manual testing and polish
+- [x] 13. Manual testing and polish
   - Run `npm run example` and verify all features work
   - Test all navigation paths
   - Test all actions (increment, decrement, reset, toggle theme)
