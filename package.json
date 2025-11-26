@@ -5,30 +5,42 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
+  "exclude": [
+    "dist-example/"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist 2>&1 & tsc",
+    "build:examples": "tsc -p tsconfig.examples.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "example": "node dist/example/index.js",
-    "example:01": "node dist/example/01-plugin-system/index.js",
-    "example:02": "node dist/example/02-screen-registry/index.js",
-    "example:03": "node dist/example/03-action-engine/index.js",
-    "example:04": "node dist/example/04-event-bus/index.js",
-    "example:05": "node dist/example/05-runtime-context/index.js",
-    "tutorial:01": "node dist/example/tutorial/01-basic-task-plugin/index.js",
-    "tutorial:02": "node dist/example/tutorial/02-multiple-plugins/index.js",
-    "tutorial:03": "node dist/example/tutorial/03-event-communication/index.js",
-    "tutorial:04": "vite example/tutorial/04-ui-provider-swap",
-    "tutorial:05": "node dist/example/tutorial/05-custom-plugin/index.js"
+    "example": "npm run build:examples && node dist-example/example/index.js",
+    "example:01": "npm run build:examples && node dist-example/example/01-plugin-system/index.js",
+    "example:02": "npm run build:examples && node dist-example/example/02-screen-registry/index.js",
+    "example:03": "npm run build:examples && node dist-example/example/03-action-engine/index.js",
+    "example:04": "npm run build:examples && node dist-example/example/04-event-bus/index.js",
+    "example:05": "npm run build:examples && node dist-example/example/05-runtime-context/index.js",
+    "tutorial:01": "npm run build:examples && node dist-example/example/tutorial/01-basic-task-plugin/index.js",
+    "tutorial:02": "npm run build:examples && node dist-example/example/tutorial/02-multiple-plugins/index.js",
+    "tutorial:03": "npm run build:examples && node dist-example/example/tutorial/03-event-communication/index.js",
+    "tutorial:04": "npm run build:examples && vite dist-example/example/tutorial/04-ui-provider-swap",
+    "tutorial:05": "npm run build:examples && node dist-example/example/tutorial/05-custom-plugin/index.js"
   },
   "keywords": [
     "runtime",
     "plugin",
     "framework",
     "internal-tools",
-    "modular"
+    "modular",
+    "ui-agnostic"
   ],
-  "author": "",
+  "author": "skcrew",
+  "email": "skeleton-crew-runtime@gmail.com",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.10.0",
