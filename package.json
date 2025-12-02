@@ -1,18 +1,14 @@
 {
   "name": "skeleton-crew-runtime",
   "version": "0.1.1",
-  "description": "A minimal, plugin-based application runtime for building internal tools and modular applications",
+  "description": "A minimal plugin runtime for building modular JavaScript applications.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist/",
     "LICENSE",
-    "README.md",
-    "package.json"
-  ],
-  "exclude": [
-    "dist-example/"
+    "README.md"
   ],
   "scripts": {
     "build": "rimraf dist && tsc",
@@ -35,14 +31,33 @@
   "keywords": [
     "runtime",
     "plugin",
+    "plugin-system",
     "framework",
     "internal-tools",
     "modular",
-    "ui-agnostic"
+    "ui-agnostic",
+    "event-driven",
+    "browser-extension",
+    "cli-tools",
+    "typescript"
   ],
-  "author": "skcrew",
-  "email": "skeleton-crew-runtime@gmail.com",
+  "author": {
+    "name": "skcrew",
+    "email": "skeletoncrewruntime@gmail.com"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skcrew/runtime.git"
+  },
+  "homepage": "https://github.com/skcrew/runtime#readme",
+  "bugs": {
+    "url": "https://github.com/skcrew/runtime/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@vitest/coverage-v8": "^1.6.1",
