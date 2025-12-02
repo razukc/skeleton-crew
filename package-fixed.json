@@ -8,19 +8,15 @@
   "files": [
     "dist/",
     "LICENSE",
-    "README.md",
-    "package.json"
-  ],
-  "exclude": [
-    "dist-example/"
+    "README.md"
   ],
   "scripts": {
     "build": "rimraf dist && tsc",
-    "build:examples": "rimraf dist-examples && tsc -p tsconfig.examples.json",
+    "build:examples": "tsc -p tsconfig.examples.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build && npm test",
-    "examples": "npm run build:examples && node dist-example/examples/playground/index.js",
+    "example": "npm run build:examples && node dist-example/examples/playground/index.js",
     "example:01": "npm run build:examples && node dist-example/examples/basics/01-plugin-system/index.js",
     "example:02": "npm run build:examples && node dist-example/examples/basics/02-screen-registry/index.js",
     "example:03": "npm run build:examples && node dist-example/examples/basics/03-action-engine/index.js",
@@ -35,19 +31,38 @@
   "keywords": [
     "runtime",
     "plugin",
+    "plugin-system",
     "framework",
     "internal-tools",
     "modular",
-    "ui-agnostic"
+    "ui-agnostic",
+    "event-driven",
+    "browser-extension",
+    "cli-tools",
+    "typescript"
   ],
-  "author": "skcrew",
-  "email": "skeleton-crew-runtime@gmail.com",
+  "author": {
+    "name": "skcrew",
+    "email": "skeleton-crew-runtime@gmail.com"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/razukc/skeleton-crew.git"
+  },
+  "homepage": "https://github.com/razukc/skeleton-crew#readme",
+  "bugs": {
+    "url": "https://github.com/razukc/skeleton-crew/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@vitest/coverage-v8": "^1.6.1",
     "fast-check": "^3.15.0",
-    "rimraf": "^6.1.2",
+    "rimraf": "^5.0.5",
     "typescript": "^5.3.3",
     "vitest": "^1.1.0"
   },
