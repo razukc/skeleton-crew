@@ -7,6 +7,27 @@ Stop wiring up infrastructure. Start building features.
 ```bash
 npm install skeleton-crew-runtime
 ```
+---
+## Documentation
+
+### Getting Started
+- **[Installation](docs/getting-started/installation.md)** - Install and setup
+- **[API Reference](docs/api/reference.md)** - Complete TypeScript API
+- **[Core Concepts](docs/getting-started/README.md)** - Understand the fundamentals
+- **[Your First Plugin](docs/getting-started/your-first-plugin.md)** - Build your first feature
+
+### Guides & Examples
+- **[Migration Guide](docs/guides/migration-guide.md)** - Integrate with existing apps
+- **[Examples Guide](docs/guides/EXAMPLES_GUIDE.md)** - Learn through code examples
+
+### Use Cases
+- **[Browser Extensions](docs/use-cases/BROWSER_TOOLS.md)** - Build browser tools
+- **[CLI Applications](docs/use-cases/)** - Command-line tools
+- **[Real-Time Apps](docs/use-cases/)** - Collaboration and sync
+
+### Advanced
+- **[Architecture](docs/architecture/)** - How it works under the hood
+- **[Troubleshooting](docs/troubleshooting/)** - Common issues and solutions
 
 ---
 
@@ -238,33 +259,6 @@ npm run client  # Terminal 2-3
 **[See all demos →](demo/README.md)**
 
 ---
-
-## Documentation
-
-### Getting Started
-- **[Installation](docs/getting-started/installation.md)** - Install and setup
-- **[API Reference](docs/api/reference.md)** - Complete TypeScript API
-- **[Core Concepts](docs/getting-started/README.md)** - Understand the fundamentals
-- **[Your First Plugin](docs/getting-started/your-first-plugin.md)** - Build your first feature
-
-### Guides & Examples
-- **[Migration Guide](docs/guides/migration-guide.md)** - Integrate with existing apps
-- **[Examples Guide](docs/guides/EXAMPLES_GUIDE.md)** - Learn through code examples
-
-### Use Cases
-- **[Browser Extensions](docs/use-cases/BROWSER_TOOLS.md)** - Build browser tools
-- **[CLI Applications](docs/use-cases/)** - Command-line tools
-- **[Real-Time Apps](docs/use-cases/)** - Collaboration and sync
-
-### Advanced
-- **[Architecture](docs/architecture/)** - How it works under the hood
-- **[Troubleshooting](docs/troubleshooting/)** - Common issues and solutions
-
----
-
-
-
-
 
 ## FAQ
 
