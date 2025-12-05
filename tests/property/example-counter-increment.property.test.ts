@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 import { Runtime } from '../../src/runtime.js';
-import { counterPlugin, getCounterValue, setCounterValue } from '../../example/plugins/counter.js';
+import { counterPlugin, getCounterValue, setCounterValue } from '../../examples/playground/plugins/counter.js';
 
 /**
  * Property 4: Counter increment behavior

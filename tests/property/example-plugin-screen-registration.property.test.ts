@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { Runtime } from '../../src/runtime.js';
 import { PluginDefinition } from '../../src/types.js';
-import { coreDemoPlugin } from '../../example/plugins/core-demo.js';
-import { counterPlugin } from '../../example/plugins/counter.js';
-import { settingsPlugin } from '../../example/plugins/settings.js';
+import { coreDemoPlugin } from '../../examples/playground/plugins/core-demo.js';
+import { counterPlugin } from '../../examples/playground/plugins/counter.js';
+import { settingsPlugin } from '../../examples/playground/plugins/settings.js';
 
 /**
  * Property 1: Plugin screen registration completeness

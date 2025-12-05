@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Runtime } from '../../src/runtime.js';
-import { coreDemoPlugin, getDemoEventLog, clearDemoEventLog } from '../../example/plugins/core-demo.js';
+import { coreDemoPlugin, getDemoEventLog, clearDemoEventLog } from '../../examples/playground/plugins/core-demo.js';
 
 describe('Core Demo Plugin', () => {
   let runtime: Runtime;

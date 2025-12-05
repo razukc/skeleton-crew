@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { Runtime } from '../../src/runtime.js';
-import { counterPlugin, setCounterValue } from '../../example/plugins/counter.js';
+import { counterPlugin, setCounterValue } from '../../examples/playground/plugins/counter.js';
 
 /**
  * Property 6: Counter change events
