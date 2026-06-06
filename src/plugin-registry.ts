@@ -248,9 +248,40 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         this.logger.debug(`Rolled back plugin: ${initialized[i]}`);
       }
       this.initializedPlugins = [];
-      // Re-throw with context including plugin name
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Plugin "${failingPluginName}" setup failed: ${errorMessage}`);
+      // Re-throw with plugin context. We preserve the original error's class
+      // identity (so callers can use `instanceof ValidationError`,
+      // `instanceof DuplicateRegistrationError`, etc., as documented in
+      // docs/guides/config-validation.md) while still prefixing the message
+      // with the plugin name so users know which plugin failed.
+      //
+      // Implementation: build a new instance whose prototype chain matches
+      // the original's, copy all own properties (including `field`,
+      // `resourceType`, `pluginName`, etc.), augment the message, and set
+      // `cause` so the original error is still inspectable via Error.cause.
+      const wrappedMessage = `Plugin "${failingPluginName}" setup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      if (error instanceof Error) {
+        const proto = Object.getPrototypeOf(error);
+        const wrapped = Object.create(proto) as Error;
+        wrapped.message = wrappedMessage;
+        wrapped.name = error.name;
+        // Copy own enumerable properties (custom fields on subclasses like
+        // ValidationError.field, ValidationError.resourceType, etc.)
+        for (const key of Object.getOwnPropertyNames(error)) {
+          if (key === 'message' || key === 'stack') continue;
+          const desc = Object.getOwnPropertyDescriptor(error, key);
+          if (desc) Object.defineProperty(wrapped, key, desc);
+        }
+        // Preserve the original stack so debuggers point at the real throw site
+        wrapped.stack = error.stack;
+        // Expose the original via Error.cause for callers that want to walk
+        // the chain (supported by Node 16.9+).
+        (wrapped as Error & { cause?: unknown }).cause = error;
+        throw wrapped;
+      }
+      // Non-Error throw (string, object, etc.) — preserve plain Error fallback.
+      throw new Error(wrappedMessage);
     }
   }
 
