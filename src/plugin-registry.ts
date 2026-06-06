@@ -1,27 +1,34 @@
+import semver from 'semver';
 import { PluginDefinition, RuntimeContext, Logger, ValidationError, DuplicateRegistrationError } from './types.js';
 
 // ─── Semver helpers ───────────────────────────────────────────────────────────
 
 /**
- * Parses a semver string into [major, minor, patch].
- * Accepts "1.2.3" or "v1.2.3". Returns null for invalid strings.
- */
-function parseSemver(v: string): [number, number, number] | null {
-  const m = v.replace(/^v/, '').match(/^(\d+)\.(\d+)\.(\d+)$/);
-  if (!m) return null;
-  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
-}
-
-/**
- * Returns true if `next` is strictly greater than `current` by semver rules.
+ * Returns true if `next` is strictly greater than `current` by SemVer 2.0 rules.
+ *
+ * Accepts the full SemVer 2.0 grammar — including pre-release identifiers
+ * (`1.2.4-rc.1`, `2.0.0-alpha.3`) and build metadata (`1.2.3+build.5`). A
+ * leading `v` is tolerated on either side (`v1.2.3`).
+ *
+ * Returns `false` when either version cannot be parsed as SemVer 2.0, so an
+ * unparseable input never reads as "newer".
+ *
+ * @example
+ *   isNewerVersion('1.2.3', '1.2.4')        // true
+ *   isNewerVersion('1.2.3', '1.2.4-rc.1')   // true  (pre-release > 1.2.3)
+ *   isNewerVersion('1.2.3-rc.1', '1.2.3')   // true  (1.2.3 > any 1.2.3-pre)
+ *   isNewerVersion('2.0.0', '1.9.9')        // false
+ *   isNewerVersion('not-semver', '1.0.0')   // false
  */
 export function isNewerVersion(current: string, next: string): boolean {
-  const a = parseSemver(current);
-  const b = parseSemver(next);
+  // Tolerate a leading `v` (e.g. `v1.2.3`) by stripping it before validation.
+  // Anything else must be a literal valid SemVer 2.0 string — we deliberately
+  // do NOT use semver.coerce, which would silently upgrade `"1.2"` or
+  // `"2024-06-01"` to a valid version and then compare them.
+  const a = semver.valid(current.replace(/^v/, ''));
+  const b = semver.valid(next.replace(/^v/, ''));
   if (!a || !b) return false;
-  if (b[0] !== a[0]) return b[0] > a[0];
-  if (b[1] !== a[1]) return b[1] > a[1];
-  return b[2] > a[2];
+  return semver.gt(b, a);
 }
 
 export class PluginRegistry<TConfig = Record<string, unknown>> {
