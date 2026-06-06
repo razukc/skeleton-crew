@@ -9,7 +9,7 @@ npm install skeleton-crew-runtime@^0.4.1
 ```
 ## What's New in v0.4.1
 
-- **Plugin Hot-Swap (`runtime.swapPlugin()`)**: New method on `Runtime` that replaces a running plugin with a new version without restarting the runtime. Requires the new plugin to have the same name and a strictly higher semver version. Sequence: dispose old plugin → tear down all its registered resources (actions, screens, services) → run config validation → setup new plugin with resource tracking → emit `plugin:swapped` event. Rolls back on setup failure.
+- **Plugin Hot-Swap (`runtime.swapPlugin()`)**: New method on `Runtime` that replaces a running plugin with a new version without restarting the runtime. Requires the new plugin to have the same name and a strictly higher SemVer 2.0 version (pre-release and build metadata supported). Sequence: **pre-flight** — semver, dependency presence, and `validateConfig` are checked first; if any reject, the running plugin is untouched. **Commit** — dispose old plugin → tear down its registered resources (actions, screens, services) → register new → setup new with resource tracking → emit `plugin:swapped`. If the new plugin's setup throws during the commit phase, its partial registrations are cleaned up but the previous plugin is not restored — pre-flight is the recovery surface.
 - **`PluginSwapError`**: New error class thrown when a swap is rejected (plugin not initialized, version not an upgrade, or new plugin setup fails).
 - **`isNewerVersion(current, next)`**: Exported semver utility that returns `true` if `next` is strictly greater than `current`.
 
