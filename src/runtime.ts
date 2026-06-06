@@ -34,6 +34,12 @@ export class Runtime<TConfig = Record<string, unknown>> {
   private pluginLoader?: PluginLoader;
   private pluginPaths: string[];
   private pluginPackages: string[];
+  /**
+   * Set of plugin names with a swapPlugin call currently in flight. Used to
+   * reject re-entrant swaps for the same plugin. Concurrent swaps of
+   * different plugins are allowed — they touch disjoint state.
+   */
+  private swapsInFlight: Set<string> = new Set();
 
   /**
    * Creates a new Runtime instance with optional configuration.
@@ -375,6 +381,25 @@ export class Runtime<TConfig = Record<string, unknown>> {
    *   plugin's setup throws.
    */
   async swapPlugin(newPlugin: PluginDefinition<TConfig>): Promise<void> {
+    // Re-entrancy guard. Must run BEFORE any await so two concurrent calls
+    // for the same plugin cannot both pass. Different plugins swap freely.
+    // The flag is cleared in the finally below, including on every error
+    // path. We reject (rather than queue) because a queued caller would
+    // run pre-flight against post-first-swap state — the version it
+    // compared against may no longer be current. Reject is honest; the
+    // caller can retry if it wants serialization.
+    if (this.swapsInFlight.has(newPlugin.name)) {
+      throw new PluginSwapError(newPlugin.name, 'a swap for this plugin is already in progress');
+    }
+    this.swapsInFlight.add(newPlugin.name);
+    try {
+      return await this.swapPluginInternal(newPlugin);
+    } finally {
+      this.swapsInFlight.delete(newPlugin.name);
+    }
+  }
+
+  private async swapPluginInternal(newPlugin: PluginDefinition<TConfig>): Promise<void> {
     if (!this.initialized) {
       throw new PluginSwapError(newPlugin.name, 'runtime is not initialized');
     }
