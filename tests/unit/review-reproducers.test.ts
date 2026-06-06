@@ -265,19 +265,18 @@ describe('FINDING #7 — reset() name + deprecated clear() alias', () => {
     expect(() => registry.reset()).not.toThrow();
   });
 
-  it('clear() still works but emits a deprecation warning', async () => {
-    const logger = silentLogger();
-    const rt = new Runtime({ logger });
+  // 0.5.0 shipped clear() as a deprecated alias emitting logger.warn,
+  // promising removal in 0.6. As of 0.6.0 the method is gone — calling it
+  // is a TypeError. Callers that ignored the deprecation warning now
+  // notice; reset() is the only supported name.
+  it('clear() has been removed in 0.6 (the promised cleanup)', async () => {
+    const rt = new Runtime({ logger: silentLogger() });
     rt.registerPlugin(makePlugin('p', '1.0.0'));
     await rt.initialize();
     await rt.shutdown();
 
-    const registry = (rt as unknown as { plugins: PluginRegistry }).plugins;
-    registry.clear();
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/PluginRegistry\.clear\(\) is deprecated/i)
-    );
+    const registry = (rt as unknown as { plugins: PluginRegistry & { clear?: () => void } }).plugins;
+    expect(registry.clear).toBeUndefined();
   });
 });
 

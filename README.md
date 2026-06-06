@@ -1,17 +1,50 @@
-# Skeleton Crew Runtime v0.5.0
+# Skeleton Crew Runtime v0.6.0
 
 **A minimal plugin runtime for building modular JavaScript applications.**
 
 Stop wiring up infrastructure. Start building features.
 
 ```bash
-npm install skeleton-crew-runtime@^0.5.0
+npm install skeleton-crew-runtime@^0.6.0
 ```
+## What's New in v0.6.0
+
+**True atomic hot-swap.** The new plugin's `setup` runs against a buffered context that doesn't touch the live registries. If it throws, the buffer is dropped and the old plugin is observably untouched — actions still serve, services still resolve, event handlers still fire. If it succeeds, the buffer commits to the live registries in one synchronous batch.
+
+```ts
+await runtime.swapPlugin({
+  name: 'my-plugin',
+  version: '2.0.0',
+  setup(ctx) {
+    // v1 is still fully live here. ctx.services.get('cfg') falls back to
+    // v1's value until v2 registers its own. Events emitted here are
+    // handled by v1.
+    ctx.actions.registerAction({ id: 'my-plugin:greet', handler: () => 'v2' });
+    throw new Error('boom');  // v1 keeps running. Action 'greet' still returns 'v1'.
+  },
+});
+```
+
+Sequence:
+
+1. Pre-flight (semver, deps, `validateConfig`) — same as 0.5.0.
+2. **Buffered setup** of the new plugin — writes go into an in-memory `SwapBuffer`, reads merge buffer over live.
+3. **Commit** (synchronous) — `replaceAtomic` flips each id in the live registries, ids the old plugin owned that the new plugin omitted are retired.
+4. `plugin:swapped` event.
+5. **Then** `dispose` of the old plugin (behavior change from 0.5.0 — was step 1).
+
+Other 0.6.0 surface:
+- **`replaceAtomic` and `unregister` added to `ActionEngine`, `ScreenRegistry`, `ServiceRegistry`** — the primitives the swap commit step uses. Available to plugins but typically not needed outside hot-swap.
+- **Read semantics during buffered setup**: `ctx.services.get` / `actions.hasAction` / `screens.getScreen` / `plugins.getPlugin` all read buffer-first, fall through to live.
+- **Event subscriptions during buffered setup are queued and committed at commit time** — a subscription registered inside `setup` won't fire on events emitted during the same setup. This avoids leaking subscriptions on rollback.
+
+**[→ Complete v0.6.0 Changelog](CHANGELOG.md#060---2026-06-07)**
+
 ## What's New in v0.5.0
 
 A correctness release driven by an internal code review of the plugin system, with hot-swap as the focal point. Every finding was first captured as a failing reproducer test (shipped in `tests/unit/review-reproducers.test.ts`), then fixed one commit at a time.
 
-- **Hot-swap is now pre-flight-safe (`runtime.swapPlugin()`)**: semver, dependency presence, and `validateConfig` are all checked **before** any side effect. If any pre-flight check rejects, the running plugin is completely untouched. Previously, a failed config validation tore down the running plugin with no recovery. (Known limitation: if the new plugin's *own setup* throws after teardown begins, the old plugin is not restored — pre-flight is the recovery surface. True atomic swap is planned for 0.6.)
+- **Hot-swap is now pre-flight-safe (`runtime.swapPlugin()`)**: semver, dependency presence, and `validateConfig` are all checked **before** any side effect. If any pre-flight check rejects, the running plugin is completely untouched. Previously, a failed config validation tore down the running plugin with no recovery. (Note: the residual atomicity window — a throw from the new plugin's own setup — is closed in 0.6.0.)
 - **SemVer 2.0 pre-release support**: `isNewerVersion` (and therefore `swapPlugin`) now correctly handles `1.2.4-rc.1`-style versions, backed by the `semver` package.
 - **Concurrent swap protection**: a second `swapPlugin` call for the same plugin while one is in flight rejects with `PluginSwapError` instead of corrupting registry state.
 - **Error class preservation**: `runtime.initialize()` failures now re-throw the original error class (e.g. `ValidationError`) with custom properties and `Error.cause` intact — `instanceof`-based error handling works as documented.

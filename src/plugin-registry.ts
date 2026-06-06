@@ -767,19 +767,4 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
     this.initializedPlugins = [];
     this.pluginResources.clear();
   }
-
-  /**
-   * @deprecated since 0.5.0 — use {@link reset} instead. The name `clear`
-   * suggested a full teardown (dispose + unregister), but this method has
-   * always been a pure state reset. Calling it while plugins are still
-   * initialized will orphan their registrations in the sibling registries.
-   * Emits a logger.warn on every call; will be removed in 0.6.
-   */
-  clear(): void {
-    this.logger.warn(
-      'PluginRegistry.clear() is deprecated and will be removed in 0.6. Use reset() instead. ' +
-      'Note: reset() is a state reset, not a teardown — call executeDispose() first if plugins are initialized.'
-    );
-    this.reset();
-  }
 }
