@@ -1,6 +1,7 @@
 import type { RuntimeContext, UIProvider, PluginDefinition, RuntimeOptions, Logger, PluginLoader } from './types.js';
 import { ConsoleLogger, RuntimeState, PluginSwapError } from './types.js';
 import { PluginRegistry, isNewerVersion, runValidateConfig } from './plugin-registry.js';
+import { createSwapBuffer } from './swap-buffer.js';
 import { ScreenRegistry } from './screen-registry.js';
 import { ActionEngine } from './action-engine.js';
 import { EventBus } from './event-bus.js';
@@ -358,7 +359,7 @@ export class Runtime<TConfig = Record<string, unknown>> {
     return this.ui.renderScreen(screen);
   }
   /**
-   * Hot-swaps a running plugin with a new version.
+   * Hot-swaps a running plugin with a new version, atomically.
    *
    * Requires the new plugin to have the same name and a strictly higher
    * SemVer 2.0 version.
@@ -366,19 +367,45 @@ export class Runtime<TConfig = Record<string, unknown>> {
    * Sequence:
    *  1. Pre-flight (non-destructive): semver, dependency presence,
    *     `validateConfig`. If any reject, the running plugin is untouched.
-   *  2. Commit: dispose old → tear down its resources → register new →
-   *     setup new → emit `plugin:swapped`.
+   *  2. Buffered setup: v2.setup runs against a buffered context that
+   *     records writes (registerAction, registerScreen, services.register,
+   *     events.on, services.unregister) into an in-memory SwapBuffer.
+   *     Reads (hasAction, getScreen, services.get, …) merge buffer over
+   *     live. v1 stays fully live for the entire duration of v2.setup —
+   *     its actions, screens, services, and event handlers continue to
+   *     serve. If v2.setup throws, the buffer is dropped and v1 is
+   *     observably untouched. This is the atomicity guarantee.
+   *  3. Commit (synchronous): {@link PluginRegistry.commitSwapBuffer}
+   *     installs v2's resources (replaceAtomic for ids v1 owned, register
+   *     otherwise), honours v2's explicit removals, retires orphans
+   *     (ids v1 owned that v2 didn't touch — v2 owns the surface),
+   *     wires v2's event subscriptions live, then retires v1's. No await
+   *     between these steps; nothing else can interleave.
+   *  4. `plugin:swapped` event fires.
+   *  5. v1.dispose runs LAST (behaviour change from 0.5.0, where dispose
+   *     ran before v2.setup). v1 has been retired from the registries
+   *     for one microtask at this point; dispose is the chance to release
+   *     external handles (db connections, file watchers, etc.). A throw
+   *     from dispose is logged but cannot un-swap.
    *
-   * Rollback semantics: a failure during pre-flight (step 1) is fully
-   * transparent — the running plugin keeps serving and no state changes.
-   * A failure during the new plugin's setup (step 2) cleans up the new
-   * plugin's partial registrations but does NOT restore the old plugin;
-   * by that point the old plugin's dispose has already run. Pre-flight is
-   * the recovery surface. Concurrent callers should serialize swaps
-   * externally.
+   * Atomicity guarantee: a throw from v2.setup is observably a no-op.
+   * v1's actions, screens, services, and event handlers all keep serving.
+   * Pre-flight, the buffered setup, AND the commit are now all on the
+   * recovery path; the only unrecoverable state is mutation of a v1-owned
+   * service object that v2.setup performed before throwing (best-effort).
    *
-   * @throws PluginSwapError if any pre-flight check rejects or the new
-   *   plugin's setup throws.
+   * Read semantics inside v2.setup: buffer-first, live-fallback.
+   * v2 sees its own freshly-registered values via `services.get`,
+   * `hasAction`, etc. v1's resources remain visible until v2 either
+   * overrides or explicitly unregisters them. Events emitted during
+   * v2.setup are handled by v1; v2's own `events.on` subscriptions
+   * become live at commit time, not at `on()` time.
+   *
+   * Concurrency: a per-plugin re-entrancy guard rejects a second swap
+   * call for the same plugin while one is in flight. Concurrent swaps of
+   * different plugins are allowed — they touch disjoint state.
+   *
+   * @throws PluginSwapError if any pre-flight check rejects or v2.setup throws.
    */
   async swapPlugin(newPlugin: PluginDefinition<TConfig>): Promise<void> {
     // Re-entrancy guard. Must run BEFORE any await so two concurrent calls
@@ -450,36 +477,62 @@ export class Runtime<TConfig = Record<string, unknown>> {
       );
     }
 
-    // ── Commit phase ─────────────────────────────────────────────────────
-    // Side effects begin here. From this point on, the only failure mode
-    // is the new plugin's own setup throwing — see docblock for what is
-    // and is not recoverable.
+    // ── Buffered setup phase ─────────────────────────────────────────────
+    // v1 stays fully live here — buildBufferedContext intercepts writes
+    // into the swap buffer and shadows reads buffer-first. If v2.setup
+    // throws, we drop the buffer and return; v1 is observably untouched.
 
     this.logger.info(`[hot-swap] Swapping plugin "${newPlugin.name}" ${existing.version} → ${newPlugin.version}`);
 
-    // 1. Dispose old plugin and tear down all its registered resources.
-    await this.plugins.teardownPlugin(newPlugin.name, this.context);
-
-    // 2. Replace the plugin definition in the registry.
-    this.plugins.replacePlugin(newPlugin);
-
-    // 3. Run new plugin setup with resource tracking.
+    const buffer = createSwapBuffer<TConfig>();
+    const bufferedCtx = this.plugins.buildBufferedContext(
+      newPlugin.name,
+      newPlugin,
+      this.context,
+      buffer,
+    );
     try {
-      await this.plugins.setupSinglePlugin(newPlugin, this.context);
+      await newPlugin.setup(bufferedCtx);
     } catch (err) {
-      // Rollback the NEW plugin's partial registrations. The old plugin's
-      // dispose has already run at this point; it cannot be re-instantiated
-      // from here. See PluginSwapError message and docblock for details.
-      await this.plugins.teardownPlugin(newPlugin.name, this.context);
-      throw new PluginSwapError(newPlugin.name, `new plugin setup failed: ${(err as Error).message}`);
+      // Atomic rollback: drop the buffer and surface a wrapped error. v1
+      // is still serving — no commit happened, no live registry was
+      // touched. See docblock for the one residual caveat (mutation of a
+      // v1-owned service object during v2.setup is best-effort).
+      throw new PluginSwapError(
+        newPlugin.name,
+        `new plugin setup failed: ${(err as Error).message}`,
+      );
     }
 
-    // 4. Emit event.
+    // ── Commit phase (synchronous; the moment of atomicity) ──────────────
+    // No await between these steps. From the outside the swap is one
+    // instantaneous transition.
+
+    this.plugins.replacePlugin(newPlugin);
+    this.plugins.commitSwapBuffer(newPlugin.name, buffer, {
+      actions: this.actions,
+      screens: this.screens,
+      services: this.services,
+      events: this.events,
+    });
+    // newPlugin.name is already in initializedPlugins (v1 was initialized
+    // and we re-use the same slot via replacePlugin), so no markInitialized
+    // call is needed. The initializedPlugins array is plugin-name-keyed,
+    // not (name, version)-keyed.
+
+    // ── Post-commit ──────────────────────────────────────────────────────
+    // Order: emit FIRST so subscribers see the canonical "v1 → v2"
+    // transition before v1's dispose runs. Then dispose v1, which may
+    // release external handles. Dispose errors are logged, not rethrown
+    // (the swap is already observable; a failing dispose can't un-swap).
+
     this.events.emit('plugin:swapped', {
       name: newPlugin.name,
       previousVersion: existing.version,
-      newVersion: newPlugin.version
+      newVersion: newPlugin.version,
     });
+
+    await this.plugins.runDispose(existing, this.context);
 
     this.logger.info(`[hot-swap] Plugin "${newPlugin.name}" successfully swapped to ${newPlugin.version}`);
   }

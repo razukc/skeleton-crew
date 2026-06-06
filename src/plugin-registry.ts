@@ -559,6 +559,31 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
   }
 
   /**
+   * Calls a plugin's `dispose` (if defined) and swallows-and-logs any throw.
+   * Does NOT touch the plugin's owned resources — used by the 0.6 atomic
+   * hot-swap path, where {@link commitSwapBuffer} has already retired v1's
+   * resources and v2's are already live. The old plugin's dispose runs
+   * AFTER commit (Q3), giving v1 a chance to release external handles
+   * (db connections, file watchers) once it's no longer serving.
+   *
+   * Errors are logged, not rethrown: the swap is already observably
+   * committed (plugin:swapped fired); a failing dispose cannot un-swap.
+   *
+   * @since 0.6.0
+   */
+  async runDispose(
+    plugin: PluginDefinition<TConfig>,
+    context: RuntimeContext<TConfig>,
+  ): Promise<void> {
+    if (!plugin.dispose) return;
+    try {
+      await plugin.dispose(context);
+    } catch (err) {
+      this.logger.error(`Plugin "${plugin.name}" dispose failed after swap commit`, err);
+    }
+  }
+
+  /**
    * Invokes every tracked unregister callback for a plugin and clears them
    * from its OwnedIds record (without removing the record itself, so the
    * caller may still inspect what was owned).

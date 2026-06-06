@@ -35,7 +35,11 @@ describe('plugin hot-swap', () => {
     expect(v2Setup).toHaveBeenCalledOnce();
   });
 
-  it('calls dispose on the old plugin before setting up the new one', async () => {
+  // Behavior change in 0.6.0: v1.dispose now runs AFTER v2.setup commits.
+  // Atomic swap means v1 stays fully live during v2.setup; dispose is the
+  // post-commit hook that lets v1 release external handles (db connections,
+  // file watchers) once it's no longer serving. See swapPlugin docblock.
+  it('calls dispose on the old plugin AFTER setting up the new one (0.6)', async () => {
     const order: string[] = [];
     const v1 = makePlugin('my-plugin', '1.0.0', {
       setup: vi.fn(),
@@ -49,7 +53,7 @@ describe('plugin hot-swap', () => {
 
     await rt.swapPlugin(v2);
 
-    expect(order).toEqual(['dispose-v1', 'setup-v2']);
+    expect(order).toEqual(['setup-v2', 'dispose-v1']);
   });
 
   it('unregisters old plugin actions before new setup', async () => {
@@ -132,7 +136,12 @@ describe('plugin hot-swap', () => {
       .rejects.toThrow(PluginSwapError);
   });
 
-  it('throws PluginSwapError and rolls back when new plugin setup fails', async () => {
+  // Behavior change in 0.6.0: a failed v2.setup is a TRUE no-op. v1's
+  // resources stay live because the buffered context never touched them.
+  // (0.5.0 tore v1 down before attempting v2.setup, so this test asserted
+  // 'gone' — the v1 action was a casualty of the residual window. With
+  // true atomic swap, v1's action stays.)
+  it('throws PluginSwapError and leaves v1 fully live when new plugin setup fails (0.6)', async () => {
     const rt = new Runtime({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } });
     const v1 = makePlugin('my-plugin', '1.0.0', {
       setup(ctx: RuntimeContext) {
@@ -148,10 +157,10 @@ describe('plugin hot-swap', () => {
 
     await expect(rt.swapPlugin(v2)).rejects.toThrow(PluginSwapError);
 
-    // After failed swap, the action registered by v2 should not exist
-    // (v1's action was torn down before v2 attempted setup, so it's gone too)
+    // v1's action survives: atomicity guarantee.
     const ctx = rt.getContext();
-    expect(ctx.actions.hasAction('my-plugin:stable')).toBe(false);
+    expect(ctx.actions.hasAction('my-plugin:stable')).toBe(true);
+    expect(await ctx.actions.runAction('my-plugin:stable')).toBe('stable');
   });
 
   it('emits plugin:swapped event with correct payload', async () => {
