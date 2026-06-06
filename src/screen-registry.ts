@@ -56,6 +56,50 @@ export class ScreenRegistry {
   }
 
   /**
+   * Atomically replaces a screen's definition in place.
+   *
+   * If the id is already registered, its definition is swapped (single
+   * `Map.set`) — no DuplicateRegistrationError, no transient empty state.
+   * If the id is absent, behaves like a register (sets the definition; no
+   * unregister callback is returned).
+   *
+   * Used by hot-swap commit (PluginRegistry.commitSwapBuffer) to install v2's
+   * resources without going through unregister-then-register. Validation
+   * matches registerScreen's so a malformed def cannot replace a good one.
+   *
+   * @since 0.6.0
+   * @throws ValidationError if the screen lacks `id`, `title`, or `component`.
+   */
+  replaceAtomic(screen: ScreenDefinition): void {
+    if (!screen.id || typeof screen.id !== 'string') {
+      throw new ValidationError('Screen', 'id');
+    }
+    if (!screen.title || typeof screen.title !== 'string') {
+      throw new ValidationError('Screen', 'title', screen.id);
+    }
+    if (!screen.component || typeof screen.component !== 'string') {
+      throw new ValidationError('Screen', 'component', screen.id);
+    }
+    this.screens.set(screen.id, screen);
+    this.logger.debug(`Screen "${screen.id}" replaced atomically`);
+  }
+
+  /**
+   * Unregisters a screen by id. Idempotent — no-op if the id is absent.
+   * Used by hot-swap commit to retire ids v1 owned that v2 does not
+   * re-register. Plugins should continue to use the unregister callback
+   * returned by `registerScreen` rather than calling this directly.
+   *
+   * @since 0.6.0
+   */
+  unregister(id: string): void {
+    if (this.screens.has(id)) {
+      this.screens.delete(id);
+      this.logger.debug(`Screen "${id}" unregistered`);
+    }
+  }
+
+  /**
    * Retrieves a screen definition by ID.
    * 
    * @param id - The screen identifier

@@ -30,6 +30,22 @@ export class ServiceRegistry {
     }
 
     /**
+     * Atomically replaces a service's value in place.
+     *
+     * If the name is already registered, its value is swapped (single
+     * `Map.set`) — no DuplicateRegistrationError. If the name is absent,
+     * behaves like a register. Used by hot-swap commit
+     * (PluginRegistry.commitSwapBuffer) to install v2's services without
+     * going through unregister-then-register.
+     *
+     * @since 0.6.0
+     */
+    replaceAtomic<T>(name: string, service: T): void {
+        this.services.set(name, service);
+        this.logger.debug(`Service "${name}" replaced atomically`);
+    }
+
+    /**
      * Retrieves a registered service by name.
      * @param name - Unique service identifier
      * @returns The service implementation

@@ -94,6 +94,50 @@ export class ActionEngine<TConfig = Record<string, unknown>> {
   }
 
   /**
+   * Atomically replaces an action's definition in place.
+   *
+   * If the id is already registered, its definition is swapped (single
+   * `Map.set`) — no DuplicateRegistrationError, no transient empty state,
+   * and no event emitted. If the id is absent, behaves like a register
+   * (sets the definition; no unregister callback is returned).
+   *
+   * Used by hot-swap commit (PluginRegistry.commitSwapBuffer) to install v2's
+   * resources without going through unregister-then-register, which would
+   * either throw on duplicate ids or briefly expose the empty state.
+   * Validation matches registerAction's so a malformed def cannot replace a
+   * good one.
+   *
+   * @since 0.6.0
+   * @throws ValidationError if the action lacks `id` or `handler`.
+   */
+  replaceAtomic<P = unknown, R = unknown>(action: ActionDefinition<P, R, TConfig>): void {
+    if (!action.id || typeof action.id !== 'string') {
+      throw new ValidationError('Action', 'id');
+    }
+    if (!action.handler || typeof action.handler !== 'function') {
+      throw new ValidationError('Action', 'handler', action.id);
+    }
+    this.actions.set(action.id, action);
+    this.logger.debug(`Action "${action.id}" replaced atomically`);
+  }
+
+  /**
+   * Unregisters an action by id. Idempotent — no-op if the id is absent.
+   * Used by hot-swap commit to retire ids v1 owned that v2 does not
+   * re-register, and to honour v2's explicit `services.unregister`-style
+   * removals for actions. Plugins should continue to use the unregister
+   * callback returned by `registerAction` rather than calling this directly.
+   *
+   * @since 0.6.0
+   */
+  unregister(id: string): void {
+    if (this.actions.has(id)) {
+      this.actions.delete(id);
+      this.logger.debug(`Action "${id}" unregistered`);
+    }
+  }
+
+  /**
    * Executes an action by ID with optional parameters.
    * Passes the RuntimeContext to the action handler.
    * Handles both synchronous and asynchronous handlers.
