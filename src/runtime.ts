@@ -259,7 +259,7 @@ export class Runtime<TConfig = Record<string, unknown>> {
     this.screens.clear();
     this.actions.clear();
     this.events.clear();
-    this.plugins.clear();
+    this.plugins.reset();
     this.services.clear();
 
     // 4. Clear context reference in ActionEngine to break circular reference

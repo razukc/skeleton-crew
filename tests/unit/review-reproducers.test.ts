@@ -249,30 +249,41 @@ describe('FINDING #6 — dependency validation on hot-swap', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Finding #7 — clear() leaks plugin registrations
+// Finding #7 — clear() is a misleading name for a post-dispose state reset.
+//
+// The original finding read this as a behavior bug (clear should dispose).
+// After review the chosen fix is contract clarification, not behavior change:
+// the method is renamed to reset() with JSDoc that documents the
+// post-dispose-only contract, and clear() becomes a deprecated alias that
+// emits logger.warn when called. Consumers who were using clear() correctly
+// (after dispose) keep working; consumers who were using it incorrectly
+// get a logged warning pointing them at the new name + contract.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('FINDING #7 — clear() resource leak', () => {
-  it('clear() invokes dispose / unregister of initialized plugins', async () => {
+describe('FINDING #7 — reset() name + deprecated clear() alias', () => {
+  it('reset() is the new public name and behaves as a pure state reset', async () => {
     const rt = new Runtime({ logger: silentLogger() });
-    const disposeSpy = vi.fn();
-    rt.registerPlugin({
-      name: 'p',
-      version: '1.0.0',
-      setup(ctx: RuntimeContext) {
-        ctx.actions.registerAction({ id: 'p:x', handler: () => 'x' });
-      },
-      dispose: disposeSpy,
-    });
+    rt.registerPlugin(makePlugin('p', '1.0.0'));
     await rt.initialize();
+    await rt.shutdown(); // dispose first, per contract
 
-    // Reach into the registry directly — clear() is the function under test.
+    const registry = (rt as unknown as { plugins: PluginRegistry & { reset(): void } }).plugins;
+    // Must not throw; idempotent on a post-dispose registry.
+    expect(() => registry.reset()).not.toThrow();
+  });
+
+  it('clear() still works but emits a deprecation warning', async () => {
+    const logger = silentLogger();
+    const rt = new Runtime({ logger });
+    rt.registerPlugin(makePlugin('p', '1.0.0'));
+    await rt.initialize();
+    await rt.shutdown();
+
     const registry = (rt as unknown as { plugins: PluginRegistry }).plugins;
     registry.clear();
 
-    // Promise (implied — clear() name suggests "all gone"):
-    // dispose should have run, and the action should be unregistered too.
-    expect(disposeSpy).toHaveBeenCalled();
-    expect(rt.getContext().actions.hasAction('p:x')).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/PluginRegistry\.clear\(\) is deprecated/i)
+    );
   });
 });
 

@@ -312,9 +312,43 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
     this.plugins.set(plugin.name, plugin);
   }
 
-  clear(): void {
+  /**
+   * Resets the registry to its empty initial state.
+   *
+   * IMPORTANT: this is a *pure state reset*. It does NOT call `dispose()` on
+   * initialized plugins, does NOT invoke their tracked unregister callbacks,
+   * and does NOT touch the sibling registries (ActionEngine, ScreenRegistry,
+   * ServiceRegistry) where those plugins registered their resources. Calling
+   * `reset()` while plugins are still initialized will orphan their
+   * registrations in those sibling registries.
+   *
+   * The correct pre-shutdown sequence is:
+   *   await registry.executeDispose(context);  // dispose + unregister
+   *   // ... clear sibling registries ...
+   *   registry.reset();                        // wipe local state
+   *
+   * `Runtime.shutdown()` already does this in the right order.
+   *
+   * @since 0.5.0 (replaces the misleadingly-named `clear()`)
+   */
+  reset(): void {
     this.plugins.clear();
     this.initializedPlugins = [];
     this.pluginResources.clear();
+  }
+
+  /**
+   * @deprecated since 0.5.0 — use {@link reset} instead. The name `clear`
+   * suggested a full teardown (dispose + unregister), but this method has
+   * always been a pure state reset. Calling it while plugins are still
+   * initialized will orphan their registrations in the sibling registries.
+   * Emits a logger.warn on every call; will be removed in 0.6.
+   */
+  clear(): void {
+    this.logger.warn(
+      'PluginRegistry.clear() is deprecated and will be removed in 0.6. Use reset() instead. ' +
+      'Note: reset() is a state reset, not a teardown — call executeDispose() first if plugins are initialized.'
+    );
+    this.reset();
   }
 }
