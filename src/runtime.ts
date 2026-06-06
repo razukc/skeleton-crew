@@ -376,6 +376,25 @@ export class Runtime<TConfig = Record<string, unknown>> {
       );
     }
 
+    // Pre-flight: dependency check (mirrors PluginRegistry.executeSetup).
+    // Runs BEFORE teardown so a missing dep cannot orphan the running plugin.
+    // The new version may declare deps the old version did not — without this
+    // check, swapPlugin would tear down the running plugin and then call
+    // setupSinglePlugin against an environment that cannot satisfy the new
+    // contract, surfacing as a runtime error long after the swap point.
+    if (newPlugin.dependencies && newPlugin.dependencies.length > 0) {
+      for (const dep of newPlugin.dependencies) {
+        if (!this.plugins.getPlugin(dep)) {
+          throw new PluginSwapError(newPlugin.name, `requires missing dependency "${dep}"`);
+        }
+        // A swap of plugin X cannot depend on X itself; skip the self-check
+        // since X is by definition still "initialized" at this point.
+        if (dep !== newPlugin.name && !this.plugins.isInitialized(dep)) {
+          throw new PluginSwapError(newPlugin.name, `requires dependency "${dep}" to be initialized first`);
+        }
+      }
+    }
+
     this.logger.info(`[hot-swap] Swapping plugin "${newPlugin.name}" ${existing.version} → ${newPlugin.version}`);
 
     // 1. Dispose old plugin and tear down all its registered resources
