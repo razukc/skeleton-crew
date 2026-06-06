@@ -5,9 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-07
+
+A code-review-driven correctness release. 10 findings on `plugin-registry.ts` / `plugin-loader.ts` / `runtime.ts` (with `swapPlugin` as the focal point) were captured as failing reproducer tests on `main` and fixed one commit at a time. The reproducer file ships in this release as `tests/unit/review-reproducers.test.ts`. 9 reproducer assertions are now green; 1 is deferred to 0.6 (see "Known Limitation" below).
+
+### Breaking
+
+- **`runtime.swapPlugin()` sequence reordered (#1).** Validation now runs **before** any side effect. The old sequence was `dispose → teardown resources → validateConfig → setup new`; a failed `validateConfig` left the runtime with the old plugin torn down and the new plugin never set up. The new sequence runs `validateConfig` (and the new dependency pre-flight from #6) **before** the dispose/teardown step. A rejection during pre-flight now leaves the running plugin completely untouched. A failed `validateConfig` that previously propagated as a raw `Error` is now wrapped in `PluginSwapError` with the original message — callers matching the raw error class will need to update.
+
+### Fixed
+
+- **`isNewerVersion` accepts SemVer 2.0 pre-release and build metadata (#5).** `1.2.3-rc.1`, `1.2.3+build.5`, etc. are now compared correctly; previously they were rejected by the hand-rolled regex and produced misleading "must be strictly greater" errors. Backed by the `semver` package.
+- **`swapPlugin()` now performs dependency pre-flight (#6).** Previously, a new version that declared a new entry in `dependencies` would proceed through teardown and surface the missing dep as a setup-time runtime error. Now `swapPlugin` mirrors `executeSetup`'s dep validation before any side effect, raising `PluginSwapError`.
+- **`executeSetup` rollback now cleans up the failing plugin's partial registrations (#2).** When a plugin's setup threw after registering actions/screens/services through the tracked context, those registrations were orphaned in the sibling registries. The rollback path now fires the failing plugin's tracked unregister callbacks before walking the already-initialized list. `dispose()` is deliberately NOT called on the failing plugin — its setup never completed.
+- **`executeSetup` preserves error class identity (#3).** A `ValidationError` (or any other custom subclass) thrown during `validateConfig` or registration is now re-thrown as the same class, with custom own properties intact and the original error attached via `Error.cause`. The message format `Plugin "name" setup failed: <original>` is preserved so existing string-matching code keeps working. The pattern `if (error instanceof ValidationError)` documented in `docs/guides/config-validation.md` now actually works.
+- **`swapPlugin()` rejects concurrent calls for the same plugin (#4).** A re-entrancy guard rejects the second concurrent caller with `PluginSwapError("a swap for this plugin is already in progress")`. Different plugins still swap in parallel — they touch disjoint state. Callers that want serialization can retry on `PluginSwapError`.
+
+### Changed
+
+- **`PluginRegistry.clear()` is deprecated; use `reset()` (#7).** The method is a pure state reset (it does NOT call `dispose` or run unregister callbacks); the old name implied a teardown it never performed. `reset()` is the new name with a JSDoc that documents the post-dispose-only contract. `clear()` keeps working as a deprecated alias that emits `logger.warn` on every call; it will be removed in 0.6. `Runtime.shutdown()` already calls `executeDispose` first, so production behavior is unchanged.
+- **`DirectoryPluginLoader` warns on missing dependencies at sort time (#8).** When a plugin declares a dependency that isn't present in the discovered batch (commonly: a sibling plugin's load failure), the loader now emits `logger.warn` naming both the dependent and the missing dep. Previously the situation was silent and surfaced later as a confusing "requires dependency X to be initialized first" from the registry, hiding the original load failure.
+
+### Internal
+
+- Pure refactor (#9, #10): drop the redundant per-directory sort inside `DirectoryPluginLoader.loadFromPath` (the outer sort in `loadPlugins` is the only one that can resolve cross-source deps); extract the duplicated `validateConfig` handling between `executeSetup` and `swapPlugin` into a shared `runValidateConfig(plugin, config)` helper that normalizes the boolean/object return shape and catches sync + async throws.
+
+### Known limitation (deferred to 0.6)
+
+If `swapPlugin`'s **new plugin's own setup** throws after the commit phase begins, the old plugin's dispose has already run and cannot be re-instantiated. The new plugin's partial registrations are cleaned up, but the old plugin is gone for that process. Pre-flight is the recovery surface. True atomic swap (build-then-commit with shadow resource buckets) requires the action / screen / service registries to support coexisting `(plugin, version)` pairs, which is a registry-altitude change. The deferred reproducer is `it.skip`ped with a tracking comment in `tests/unit/review-reproducers.test.ts`.
+
 ## [0.4.1] - 2026-03-22
 
-- **Plugin Hot-Swap (`runtime.swapPlugin()`)**: New method on `Runtime` that replaces a running plugin with a new version without restarting the runtime. Requires the new plugin to have the same name and a strictly higher SemVer 2.0 version (pre-release and build metadata supported). Sequence: **pre-flight** — semver, dependency presence, and `validateConfig` are checked first; if any reject, the running plugin is untouched. **Commit** — dispose old plugin → tear down its registered resources (actions, screens, services) → register new → setup new with resource tracking → emit `plugin:swapped`. If the new plugin's setup throws during the commit phase, its partial registrations are cleaned up but the previous plugin is not restored — pre-flight is the recovery surface.
+- **Plugin Hot-Swap (`runtime.swapPlugin()`)**: New method on `Runtime` that replaces a running plugin with a new version without restarting the runtime. Requires the new plugin to have the same name and a strictly higher semver version. Sequence: dispose old plugin → tear down all its registered resources (actions, screens, services) → run config validation → setup new plugin with resource tracking → emit `plugin:swapped` event. Rolls back on setup failure. *(Note: this sequence was found to be non-atomic in 0.5.0 — see the 0.5.0 entry above. The intended atomic semantics are delivered as of 0.5.0.)*
 - **`PluginSwapError`**: New error class thrown when a swap is rejected (plugin not initialized, version not an upgrade, or new plugin setup fails).
 - **`isNewerVersion(current, next)`**: Exported semver utility that returns `true` if `next` is strictly greater than `current`.
 
