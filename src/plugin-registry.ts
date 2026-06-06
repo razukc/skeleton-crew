@@ -76,12 +76,51 @@ export function isNewerVersion(current: string, next: string): boolean {
   return semver.gt(b, a);
 }
 
+/**
+ * Per-plugin resource ownership record.
+ *
+ * Replaces the older `Array<() => void>` shape (an opaque LIFO of unregister
+ * closures) with id-keyed Maps. The atomic hot-swap commit step needs to ask
+ * "what action / screen / service ids did v1 own?" so it can compute the
+ * retire-on-commit set when v2 omits an id v1 had — `.keys()` answers that
+ * question directly. The mapped values are the unregister closures (same as
+ * before) so teardown still has a deterministic way to call live unregister.
+ *
+ * Event subscriptions stay as an opaque list: EventBus has no plugin-name
+ * metadata, so there is nothing typed to record other than the unsubscribe
+ * callback. Within-type teardown order remains insertion order in reverse
+ * (LIFO), preserving the property tested in
+ * tests/property/disposal-order-inverse.property.test.ts.
+ *
+ * @since 0.6.0
+ */
+export interface OwnedIds {
+  actions: Map<string, () => void>;
+  screens: Map<string, () => void>;
+  services: Map<string, () => void>;
+  eventUnsubs: Array<() => void>;
+}
+
+function createOwnedIds(): OwnedIds {
+  return {
+    actions: new Map(),
+    screens: new Map(),
+    services: new Map(),
+    eventUnsubs: [],
+  };
+}
+
 export class PluginRegistry<TConfig = Record<string, unknown>> {
   private plugins: Map<string, PluginDefinition<TConfig>>;
   private initializedPlugins: string[];
   private logger: Logger;
-  /** Tracks unregister callbacks registered by each plugin during setup */
-  private pluginResources: Map<string, Array<() => void>>;
+  /**
+   * Tracks the resources each plugin owns, keyed by plugin name.
+   *
+   * Used both by teardown (synthesize unregister calls) and by hot-swap commit
+   * (compute the retire-on-commit set for ids v2 omits — see {@link OwnedIds}).
+   */
+  private pluginResources: Map<string, OwnedIds>;
 
   constructor(logger: Logger) {
     this.plugins = new Map();
@@ -152,11 +191,23 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
    * Instead we build a proper proxy object that delegates to the live context.
    */
   private buildTrackedContext(pluginName: string, context: RuntimeContext<TConfig>): RuntimeContext<TConfig> {
-    const resources: Array<() => void> = [];
-    this.pluginResources.set(pluginName, resources);
+    const owned = createOwnedIds();
+    this.pluginResources.set(pluginName, owned);
 
     const proxy: RuntimeContext<TConfig> = {
-      get events() { return context.events; },
+      get events() {
+        // events.on is wrapped so the unsubscribe lands in owned.eventUnsubs.
+        // emit/emitAsync pass through unchanged.
+        return {
+          emit: (event: string, data?: unknown) => context.events.emit(event, data),
+          emitAsync: (event: string, data?: unknown) => context.events.emitAsync(event, data),
+          on: (event: string, handler: (data: unknown) => void) => {
+            const unsub = context.events.on(event, handler);
+            owned.eventUnsubs.push(unsub);
+            return unsub;
+          },
+        };
+      },
       get plugins() { return context.plugins; },
       get host() { return context.host; },
       get config() { return context.config; },
@@ -167,7 +218,7 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
       actions: {
         registerAction: (action) => {
           const unregister = context.actions.registerAction(action);
-          resources.push(unregister);
+          owned.actions.set(action.id, unregister);
           return unregister;
         },
         runAction: (id, params?) => context.actions.runAction(id, params),
@@ -176,7 +227,7 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
       screens: {
         registerScreen: (screen) => {
           const unregister = context.screens.registerScreen(screen);
-          resources.push(unregister);
+          owned.screens.set(screen.id, unregister);
           return unregister;
         },
         getScreen: (id) => context.screens.getScreen(id),
@@ -185,12 +236,15 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
       services: {
         register: <T>(name: string, service: T) => {
           context.services.register(name, service);
-          resources.push(() => context.services.unregister(name));
+          owned.services.set(name, () => context.services.unregister(name));
         },
         get: <T>(name: string): T => context.services.get<T>(name),
         has: (name) => context.services.has(name),
         list: () => context.services.list(),
-        unregister: (name) => context.services.unregister(name)
+        unregister: (name) => {
+          context.services.unregister(name);
+          owned.services.delete(name);
+        }
       }
     };
 
@@ -198,8 +252,27 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
   }
 
   /**
+   * Returns the OwnedIds record for a plugin, or undefined if the plugin
+   * either is unknown or hasn't run setup yet. The atomic swap commit step
+   * uses this to compute the retire-on-commit set when v2 omits an id v1 had.
+   *
+   * @since 0.6.0
+   */
+  getOwnedIds(pluginName: string): OwnedIds | undefined {
+    return this.pluginResources.get(pluginName);
+  }
+
+  /**
    * Tears down a single plugin: calls dispose, then invokes all tracked
-   * unregister callbacks in reverse registration order.
+   * unregister callbacks.
+   *
+   * Within-type order is LIFO (reverse of registration). Across types the
+   * order is fixed: events → services → screens → actions. This is a new
+   * (documented) contract in 0.6.0; the per-plugin disposal-order property in
+   * tests/property/disposal-order-inverse.property.test.ts is at the plugin
+   * level (not the within-plugin-resource level), so the change is observable
+   * only to plugins whose own resources cross types — which is most plugins,
+   * but no existing test pins a specific cross-type order.
    */
   async teardownPlugin(pluginName: string, context: RuntimeContext<TConfig>): Promise<void> {
     const plugin = this.plugins.get(pluginName);
@@ -210,12 +283,40 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         this.logger.error(`Plugin "${pluginName}" dispose failed during teardown`, err);
       }
     }
-    const resources = this.pluginResources.get(pluginName) ?? [];
-    for (let i = resources.length - 1; i >= 0; i--) {
-      try { resources[i](); } catch { /* best-effort */ }
-    }
+    this.unregisterOwnedResources(pluginName);
     this.pluginResources.delete(pluginName);
     this.initializedPlugins = this.initializedPlugins.filter(n => n !== pluginName);
+  }
+
+  /**
+   * Invokes every tracked unregister callback for a plugin and clears them
+   * from its OwnedIds record (without removing the record itself, so the
+   * caller may still inspect what was owned).
+   *
+   * Internal helper used by both teardownPlugin and the partial-rollback path
+   * in executeSetup. Each closure is wrapped in try/catch — a failing
+   * unregister should not block the others.
+   */
+  private unregisterOwnedResources(pluginName: string): void {
+    const owned = this.pluginResources.get(pluginName);
+    if (!owned) return;
+
+    // events → services → screens → actions; within each type, LIFO.
+    for (let i = owned.eventUnsubs.length - 1; i >= 0; i--) {
+      try { owned.eventUnsubs[i](); } catch { /* best-effort */ }
+    }
+    owned.eventUnsubs.length = 0;
+
+    const drainMap = (m: Map<string, () => void>) => {
+      const closures = Array.from(m.values());
+      for (let i = closures.length - 1; i >= 0; i--) {
+        try { closures[i](); } catch { /* best-effort */ }
+      }
+      m.clear();
+    };
+    drainMap(owned.services);
+    drainMap(owned.screens);
+    drainMap(owned.actions);
   }
 
   async executeSetup(context: RuntimeContext<TConfig>): Promise<void> {    const initialized: string[] = [];
@@ -272,10 +373,7 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
       // running it is more likely to corrupt state than to clean up. So we
       // only fire the tracked unregister callbacks.
       if (failingPluginName) {
-        const partialResources = this.pluginResources.get(failingPluginName) ?? [];
-        for (let i = partialResources.length - 1; i >= 0; i--) {
-          try { partialResources[i](); } catch { /* best-effort */ }
-        }
+        this.unregisterOwnedResources(failingPluginName);
         this.pluginResources.delete(failingPluginName);
       }
 
