@@ -1,27 +1,79 @@
+import semver from 'semver';
 import { PluginDefinition, RuntimeContext, Logger, ValidationError, DuplicateRegistrationError } from './types.js';
 
 // ─── Semver helpers ───────────────────────────────────────────────────────────
 
 /**
- * Parses a semver string into [major, minor, patch].
- * Accepts "1.2.3" or "v1.2.3". Returns null for invalid strings.
+ * Returns true if `next` is strictly greater than `current` by SemVer 2.0 rules.
+ *
+ * Accepts the full SemVer 2.0 grammar — including pre-release identifiers
+ * (`1.2.4-rc.1`, `2.0.0-alpha.3`) and build metadata (`1.2.3+build.5`). A
+ * leading `v` is tolerated on either side (`v1.2.3`).
+ *
+ * Returns `false` when either version cannot be parsed as SemVer 2.0, so an
+ * unparseable input never reads as "newer".
+ *
+ * @example
+ *   isNewerVersion('1.2.3', '1.2.4')        // true
+ *   isNewerVersion('1.2.3', '1.2.4-rc.1')   // true  (pre-release > 1.2.3)
+ *   isNewerVersion('1.2.3-rc.1', '1.2.3')   // true  (1.2.3 > any 1.2.3-pre)
+ *   isNewerVersion('2.0.0', '1.9.9')        // false
+ *   isNewerVersion('not-semver', '1.0.0')   // false
  */
-function parseSemver(v: string): [number, number, number] | null {
-  const m = v.replace(/^v/, '').match(/^(\d+)\.(\d+)\.(\d+)$/);
-  if (!m) return null;
-  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)];
-}
+/**
+ * Result of running a plugin's optional `validateConfig` hook, normalized.
+ *
+ * `ok: true`     — validation passed (or no hook was defined).
+ * `ok: false`    — validation rejected. `errors` is a human-readable summary
+ *                  (joined message list, or "config validation failed" if the
+ *                  hook returned a bare `false`). `threw` is true if the
+ *                  hook itself threw rather than returning a rejection — useful
+ *                  for callers that want to phrase the error differently
+ *                  (e.g. "config validation threw" vs "config validation failed").
+ *
+ * The helper never throws — callers translate the rejection into whatever
+ * error class fits their domain (ValidationError from initial setup,
+ * PluginSwapError from hot-swap, etc.).
+ */
+export type NormalizedValidateConfigResult =
+  | { ok: true }
+  | { ok: false; errors: string; threw: boolean };
 
 /**
- * Returns true if `next` is strictly greater than `current` by semver rules.
+ * Runs `plugin.validateConfig(config)` if defined and normalizes the result.
+ * Catches synchronous and asynchronous throws so the caller doesn't have to.
+ * Returns `{ ok: true }` when the plugin has no validator.
+ *
+ * @see NormalizedValidateConfigResult for the return shape.
  */
+export async function runValidateConfig<TConfig>(
+  plugin: PluginDefinition<TConfig>,
+  config: TConfig,
+): Promise<NormalizedValidateConfigResult> {
+  if (!plugin.validateConfig) return { ok: true };
+  let result;
+  try {
+    result = await plugin.validateConfig(config);
+  } catch (err) {
+    return { ok: false, errors: (err as Error).message ?? String(err), threw: true };
+  }
+  const valid = typeof result === 'boolean' ? result : result.valid;
+  if (valid) return { ok: true };
+  const errors = typeof result === 'object' && result.errors
+    ? result.errors.join(', ')
+    : 'config validation failed';
+  return { ok: false, errors, threw: false };
+}
+
 export function isNewerVersion(current: string, next: string): boolean {
-  const a = parseSemver(current);
-  const b = parseSemver(next);
+  // Tolerate a leading `v` (e.g. `v1.2.3`) by stripping it before validation.
+  // Anything else must be a literal valid SemVer 2.0 string — we deliberately
+  // do NOT use semver.coerce, which would silently upgrade `"1.2"` or
+  // `"2024-06-01"` to a valid version and then compare them.
+  const a = semver.valid(current.replace(/^v/, ''));
+  const b = semver.valid(next.replace(/^v/, ''));
   if (!a || !b) return false;
-  if (b[0] !== a[0]) return b[0] > a[0];
-  if (b[1] !== a[1]) return b[1] > a[1];
-  return b[2] > a[2];
+  return semver.gt(b, a);
 }
 
 export class PluginRegistry<TConfig = Record<string, unknown>> {
@@ -193,16 +245,9 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         // Config Validation (v0.3 Feature)
         // Validate plugin config before setup if validateConfig is defined
         if (plugin.validateConfig) {
-          const validationResult = await plugin.validateConfig(context.config);
-          const isValid = typeof validationResult === 'boolean'
-            ? validationResult
-            : validationResult.valid;
-
-          if (!isValid) {
-            const errors = typeof validationResult === 'object' && validationResult.errors
-              ? validationResult.errors.join(', ')
-              : 'config validation failed';
-            throw new ValidationError('Plugin', `config (${errors})`, plugin.name);
+          const validation = await runValidateConfig(plugin, context.config);
+          if (!validation.ok) {
+            throw new ValidationError('Plugin', `config (${validation.errors})`, plugin.name);
           }
           this.logger.debug(`Plugin "${plugin.name}" config validated successfully`);
         }
@@ -215,16 +260,66 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         this.initializedPlugins.push(plugin.name);
         this.logger.debug(`Plugin "${plugin.name}" initialized successfully`);      }
     } catch (error) {
-      // Rollback: teardown already-initialized plugins in reverse order
+      // Rollback the FAILING plugin's partial registrations first. Its
+      // tracked context (buildTrackedContext) has already pushed unregister
+      // callbacks for whatever resources it managed to register before
+      // throwing — and previously these were leaked because the catch loop
+      // below only walks `initialized` (which excludes the failing plugin).
+      //
+      // We deliberately do NOT call teardownPlugin here: that would invoke
+      // the plugin's dispose, which is documented as the inverse of a
+      // SUCCESSFUL setup. A half-setup plugin's dispose has no contract;
+      // running it is more likely to corrupt state than to clean up. So we
+      // only fire the tracked unregister callbacks.
+      if (failingPluginName) {
+        const partialResources = this.pluginResources.get(failingPluginName) ?? [];
+        for (let i = partialResources.length - 1; i >= 0; i--) {
+          try { partialResources[i](); } catch { /* best-effort */ }
+        }
+        this.pluginResources.delete(failingPluginName);
+      }
+
+      // Rollback already-initialized plugins in reverse order
       this.logger.error('Plugin setup failed, rolling back initialized plugins');
       for (let i = initialized.length - 1; i >= 0; i--) {
         await this.teardownPlugin(initialized[i], context);
         this.logger.debug(`Rolled back plugin: ${initialized[i]}`);
       }
       this.initializedPlugins = [];
-      // Re-throw with context including plugin name
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(`Plugin "${failingPluginName}" setup failed: ${errorMessage}`);
+      // Re-throw with plugin context. We preserve the original error's class
+      // identity (so callers can use `instanceof ValidationError`,
+      // `instanceof DuplicateRegistrationError`, etc., as documented in
+      // docs/guides/config-validation.md) while still prefixing the message
+      // with the plugin name so users know which plugin failed.
+      //
+      // Implementation: build a new instance whose prototype chain matches
+      // the original's, copy all own properties (including `field`,
+      // `resourceType`, `pluginName`, etc.), augment the message, and set
+      // `cause` so the original error is still inspectable via Error.cause.
+      const wrappedMessage = `Plugin "${failingPluginName}" setup failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      if (error instanceof Error) {
+        const proto = Object.getPrototypeOf(error);
+        const wrapped = Object.create(proto) as Error;
+        wrapped.message = wrappedMessage;
+        wrapped.name = error.name;
+        // Copy own enumerable properties (custom fields on subclasses like
+        // ValidationError.field, ValidationError.resourceType, etc.)
+        for (const key of Object.getOwnPropertyNames(error)) {
+          if (key === 'message' || key === 'stack') continue;
+          const desc = Object.getOwnPropertyDescriptor(error, key);
+          if (desc) Object.defineProperty(wrapped, key, desc);
+        }
+        // Preserve the original stack so debuggers point at the real throw site
+        wrapped.stack = error.stack;
+        // Expose the original via Error.cause for callers that want to walk
+        // the chain (supported by Node 16.9+).
+        (wrapped as Error & { cause?: unknown }).cause = error;
+        throw wrapped;
+      }
+      // Non-Error throw (string, object, etc.) — preserve plain Error fallback.
+      throw new Error(wrappedMessage);
     }
   }
 
@@ -255,9 +350,43 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
     this.plugins.set(plugin.name, plugin);
   }
 
-  clear(): void {
+  /**
+   * Resets the registry to its empty initial state.
+   *
+   * IMPORTANT: this is a *pure state reset*. It does NOT call `dispose()` on
+   * initialized plugins, does NOT invoke their tracked unregister callbacks,
+   * and does NOT touch the sibling registries (ActionEngine, ScreenRegistry,
+   * ServiceRegistry) where those plugins registered their resources. Calling
+   * `reset()` while plugins are still initialized will orphan their
+   * registrations in those sibling registries.
+   *
+   * The correct pre-shutdown sequence is:
+   *   await registry.executeDispose(context);  // dispose + unregister
+   *   // ... clear sibling registries ...
+   *   registry.reset();                        // wipe local state
+   *
+   * `Runtime.shutdown()` already does this in the right order.
+   *
+   * @since 0.5.0 (replaces the misleadingly-named `clear()`)
+   */
+  reset(): void {
     this.plugins.clear();
     this.initializedPlugins = [];
     this.pluginResources.clear();
+  }
+
+  /**
+   * @deprecated since 0.5.0 — use {@link reset} instead. The name `clear`
+   * suggested a full teardown (dispose + unregister), but this method has
+   * always been a pure state reset. Calling it while plugins are still
+   * initialized will orphan their registrations in the sibling registries.
+   * Emits a logger.warn on every call; will be removed in 0.6.
+   */
+  clear(): void {
+    this.logger.warn(
+      'PluginRegistry.clear() is deprecated and will be removed in 0.6. Use reset() instead. ' +
+      'Note: reset() is a state reset, not a teardown — call executeDispose() first if plugins are initialized.'
+    );
+    this.reset();
   }
 }

@@ -99,7 +99,12 @@ export class DirectoryPluginLoader implements PluginLoader {
       }
     }
 
-    return this.sortPluginsByDependencies(plugins);
+    // Don't sort here. loadPlugins() will sort the combined list across all
+    // paths + packages, which is the only scope at which cross-source
+    // dependencies can resolve. Sorting per-directory was wasted work and
+    // invited a footgun: a future maintainer might assume loadFromPath's
+    // output is already canonical and bypass the outer sort.
+    return plugins;
   }
 
   /**
@@ -198,6 +203,18 @@ export class DirectoryPluginLoader implements PluginLoader {
       // Visit dependencies first
       const dependencies = plugin.dependencies || [];
       for (const dep of dependencies) {
+        // Surface declared deps that aren't in this discovery batch. They may
+        // be registered manually later (in which case the consumer can ignore
+        // this), but more commonly they signal that a sibling plugin failed
+        // to load — and the resulting "dependency not initialized" error from
+        // PluginRegistry would otherwise hide the original cause.
+        if (!pluginMap.has(dep)) {
+          this.logger.warn(
+            `Plugin "${pluginName}" declares dependency "${dep}" which was not found ` +
+            `in the discovered batch. If it is not registered manually, plugin ` +
+            `initialization will fail.`
+          );
+        }
         visit(dep);
       }
 

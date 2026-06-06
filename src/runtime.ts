@@ -1,6 +1,6 @@
 import type { RuntimeContext, UIProvider, PluginDefinition, RuntimeOptions, Logger, PluginLoader } from './types.js';
 import { ConsoleLogger, RuntimeState, PluginSwapError } from './types.js';
-import { PluginRegistry, isNewerVersion } from './plugin-registry.js';
+import { PluginRegistry, isNewerVersion, runValidateConfig } from './plugin-registry.js';
 import { ScreenRegistry } from './screen-registry.js';
 import { ActionEngine } from './action-engine.js';
 import { EventBus } from './event-bus.js';
@@ -34,6 +34,12 @@ export class Runtime<TConfig = Record<string, unknown>> {
   private pluginLoader?: PluginLoader;
   private pluginPaths: string[];
   private pluginPackages: string[];
+  /**
+   * Set of plugin names with a swapPlugin call currently in flight. Used to
+   * reject re-entrant swaps for the same plugin. Concurrent swaps of
+   * different plugins are allowed — they touch disjoint state.
+   */
+  private swapsInFlight: Set<string> = new Set();
 
   /**
    * Creates a new Runtime instance with optional configuration.
@@ -253,7 +259,7 @@ export class Runtime<TConfig = Record<string, unknown>> {
     this.screens.clear();
     this.actions.clear();
     this.events.clear();
-    this.plugins.clear();
+    this.plugins.reset();
     this.services.clear();
 
     // 4. Clear context reference in ActionEngine to break circular reference
@@ -353,11 +359,47 @@ export class Runtime<TConfig = Record<string, unknown>> {
   }
   /**
    * Hot-swaps a running plugin with a new version.
-   * Requires the new plugin to have the same name and a strictly higher semver version.
-   * Sequence: validate → dispose old → tear down resources → register new → setup new → emit plugin:swapped.
-   * @throws PluginSwapError if preconditions are not met.
+   *
+   * Requires the new plugin to have the same name and a strictly higher
+   * SemVer 2.0 version.
+   *
+   * Sequence:
+   *  1. Pre-flight (non-destructive): semver, dependency presence,
+   *     `validateConfig`. If any reject, the running plugin is untouched.
+   *  2. Commit: dispose old → tear down its resources → register new →
+   *     setup new → emit `plugin:swapped`.
+   *
+   * Rollback semantics: a failure during pre-flight (step 1) is fully
+   * transparent — the running plugin keeps serving and no state changes.
+   * A failure during the new plugin's setup (step 2) cleans up the new
+   * plugin's partial registrations but does NOT restore the old plugin;
+   * by that point the old plugin's dispose has already run. Pre-flight is
+   * the recovery surface. Concurrent callers should serialize swaps
+   * externally.
+   *
+   * @throws PluginSwapError if any pre-flight check rejects or the new
+   *   plugin's setup throws.
    */
   async swapPlugin(newPlugin: PluginDefinition<TConfig>): Promise<void> {
+    // Re-entrancy guard. Must run BEFORE any await so two concurrent calls
+    // for the same plugin cannot both pass. Different plugins swap freely.
+    // The flag is cleared in the finally below, including on every error
+    // path. We reject (rather than queue) because a queued caller would
+    // run pre-flight against post-first-swap state — the version it
+    // compared against may no longer be current. Reject is honest; the
+    // caller can retry if it wants serialization.
+    if (this.swapsInFlight.has(newPlugin.name)) {
+      throw new PluginSwapError(newPlugin.name, 'a swap for this plugin is already in progress');
+    }
+    this.swapsInFlight.add(newPlugin.name);
+    try {
+      return await this.swapPluginInternal(newPlugin);
+    } finally {
+      this.swapsInFlight.delete(newPlugin.name);
+    }
+  }
+
+  private async swapPluginInternal(newPlugin: PluginDefinition<TConfig>): Promise<void> {
     if (!this.initialized) {
       throw new PluginSwapError(newPlugin.name, 'runtime is not initialized');
     }
@@ -376,34 +418,63 @@ export class Runtime<TConfig = Record<string, unknown>> {
       );
     }
 
-    this.logger.info(`[hot-swap] Swapping plugin "${newPlugin.name}" ${existing.version} → ${newPlugin.version}`);
+    // ── Pre-flight (non-destructive) ─────────────────────────────────────
+    // Every check below runs BEFORE teardown so a rejection cannot orphan
+    // the running plugin. If any of them throw, the runtime is in the exact
+    // state it was on entry.
 
-    // 1. Dispose old plugin and tear down all its registered resources
-    await this.plugins.teardownPlugin(newPlugin.name, this.context);
-
-    // 2. Replace the plugin definition in the registry
-    this.plugins.replacePlugin(newPlugin);
-
-    // 3. Config validation for new plugin
-    if (newPlugin.validateConfig) {
-      const result = await newPlugin.validateConfig(this.context.config);
-      const valid = typeof result === 'boolean' ? result : result.valid;
-      if (!valid) {
-        const errors = typeof result === 'object' && result.errors ? result.errors.join(', ') : 'config validation failed';
-        throw new PluginSwapError(newPlugin.name, `config validation failed: ${errors}`);
+    // Dependency check (mirrors PluginRegistry.executeSetup). The new
+    // version may declare deps the old version did not.
+    if (newPlugin.dependencies && newPlugin.dependencies.length > 0) {
+      for (const dep of newPlugin.dependencies) {
+        if (!this.plugins.getPlugin(dep)) {
+          throw new PluginSwapError(newPlugin.name, `requires missing dependency "${dep}"`);
+        }
+        // A swap of plugin X cannot depend on X itself; skip the self-check
+        // since X is by definition still "initialized" at this point.
+        if (dep !== newPlugin.name && !this.plugins.isInitialized(dep)) {
+          throw new PluginSwapError(newPlugin.name, `requires dependency "${dep}" to be initialized first`);
+        }
       }
     }
 
-    // 4. Run new plugin setup with resource tracking
+    // Config validation for the new plugin. Run here, before any side
+    // effect, so a rejection (return value or async throw) leaves the
+    // running plugin in place. Previously this ran after teardown, which
+    // meant a failed validation took out the running plugin too.
+    const validation = await runValidateConfig(newPlugin, this.context.config);
+    if (!validation.ok) {
+      throw new PluginSwapError(
+        newPlugin.name,
+        `${validation.threw ? 'config validation threw' : 'config validation failed'}: ${validation.errors}`,
+      );
+    }
+
+    // ── Commit phase ─────────────────────────────────────────────────────
+    // Side effects begin here. From this point on, the only failure mode
+    // is the new plugin's own setup throwing — see docblock for what is
+    // and is not recoverable.
+
+    this.logger.info(`[hot-swap] Swapping plugin "${newPlugin.name}" ${existing.version} → ${newPlugin.version}`);
+
+    // 1. Dispose old plugin and tear down all its registered resources.
+    await this.plugins.teardownPlugin(newPlugin.name, this.context);
+
+    // 2. Replace the plugin definition in the registry.
+    this.plugins.replacePlugin(newPlugin);
+
+    // 3. Run new plugin setup with resource tracking.
     try {
       await this.plugins.setupSinglePlugin(newPlugin, this.context);
     } catch (err) {
-      // Rollback: tear down whatever the new plugin registered before failing
+      // Rollback the NEW plugin's partial registrations. The old plugin's
+      // dispose has already run at this point; it cannot be re-instantiated
+      // from here. See PluginSwapError message and docblock for details.
       await this.plugins.teardownPlugin(newPlugin.name, this.context);
       throw new PluginSwapError(newPlugin.name, `new plugin setup failed: ${(err as Error).message}`);
     }
 
-    // 5. Emit event
+    // 4. Emit event.
     this.events.emit('plugin:swapped', {
       name: newPlugin.name,
       previousVersion: existing.version,

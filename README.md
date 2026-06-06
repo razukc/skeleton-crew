@@ -1,19 +1,25 @@
-# Skeleton Crew Runtime v0.4.1
+# Skeleton Crew Runtime v0.5.0
 
 **A minimal plugin runtime for building modular JavaScript applications.**
 
 Stop wiring up infrastructure. Start building features.
 
 ```bash
-npm install skeleton-crew-runtime@^0.4.1
+npm install skeleton-crew-runtime@^0.5.0
 ```
-## What's New in v0.4.1
+## What's New in v0.5.0
 
-- **Plugin Hot-Swap (`runtime.swapPlugin()`)**: New method on `Runtime` that replaces a running plugin with a new version without restarting the runtime. Requires the new plugin to have the same name and a strictly higher semver version. Sequence: dispose old plugin → tear down all its registered resources (actions, screens, services) → run config validation → setup new plugin with resource tracking → emit `plugin:swapped` event. Rolls back on setup failure.
-- **`PluginSwapError`**: New error class thrown when a swap is rejected (plugin not initialized, version not an upgrade, or new plugin setup fails).
-- **`isNewerVersion(current, next)`**: Exported semver utility that returns `true` if `next` is strictly greater than `current`.
+A correctness release driven by an internal code review of the plugin system, with hot-swap as the focal point. Every finding was first captured as a failing reproducer test (shipped in `tests/unit/review-reproducers.test.ts`), then fixed one commit at a time.
 
-**[→ Complete v0.4.1 Features](CHANGELOG.md#041---2026-03-22)**
+- **Hot-swap is now pre-flight-safe (`runtime.swapPlugin()`)**: semver, dependency presence, and `validateConfig` are all checked **before** any side effect. If any pre-flight check rejects, the running plugin is completely untouched. Previously, a failed config validation tore down the running plugin with no recovery. (Known limitation: if the new plugin's *own setup* throws after teardown begins, the old plugin is not restored — pre-flight is the recovery surface. True atomic swap is planned for 0.6.)
+- **SemVer 2.0 pre-release support**: `isNewerVersion` (and therefore `swapPlugin`) now correctly handles `1.2.4-rc.1`-style versions, backed by the `semver` package.
+- **Concurrent swap protection**: a second `swapPlugin` call for the same plugin while one is in flight rejects with `PluginSwapError` instead of corrupting registry state.
+- **Error class preservation**: `runtime.initialize()` failures now re-throw the original error class (e.g. `ValidationError`) with custom properties and `Error.cause` intact — `instanceof`-based error handling works as documented.
+- **Rollback completeness**: a plugin whose setup throws mid-way no longer leaks its partially-registered actions/screens/services.
+- **Loader diagnostics**: missing dependencies are now warned about at discovery time, pointing at the likely load failure instead of a confusing init-time error.
+- **`PluginRegistry.reset()`** replaces the misleadingly-named `clear()` (deprecated alias retained until 0.6).
+
+**[→ Complete v0.5.0 Changelog](CHANGELOG.md#050---2026-06-07)**
 
 ## What's New in v0.4.0
  

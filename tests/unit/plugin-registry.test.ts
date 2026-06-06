@@ -697,7 +697,7 @@ describe('PluginRegistry', () => {
     });
   });
 
-  describe('clear', () => {
+  describe('reset', () => {
     it('should remove all plugins and initialized state', async () => {
       const logger = createMockLogger();
       const registry = new PluginRegistry(logger);
@@ -713,13 +713,13 @@ describe('PluginRegistry', () => {
       registry.registerPlugin(plugin);
       await registry.executeSetup(context);
 
-      registry.clear();
+      registry.reset();
 
       expect(registry.getPlugin('test-plugin')).toBeNull();
       expect(registry.getAllPlugins()).toEqual([]);
       expect(registry.getInitializedPlugins()).toEqual([]);
 
-      // After clear, dispose should not be called since initialized state is cleared
+      // After reset, dispose should not be called since initialized state is cleared
       await registry.executeDispose(context);
       expect(plugin.dispose).not.toHaveBeenCalled();
     });
