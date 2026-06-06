@@ -222,7 +222,26 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         this.initializedPlugins.push(plugin.name);
         this.logger.debug(`Plugin "${plugin.name}" initialized successfully`);      }
     } catch (error) {
-      // Rollback: teardown already-initialized plugins in reverse order
+      // Rollback the FAILING plugin's partial registrations first. Its
+      // tracked context (buildTrackedContext) has already pushed unregister
+      // callbacks for whatever resources it managed to register before
+      // throwing — and previously these were leaked because the catch loop
+      // below only walks `initialized` (which excludes the failing plugin).
+      //
+      // We deliberately do NOT call teardownPlugin here: that would invoke
+      // the plugin's dispose, which is documented as the inverse of a
+      // SUCCESSFUL setup. A half-setup plugin's dispose has no contract;
+      // running it is more likely to corrupt state than to clean up. So we
+      // only fire the tracked unregister callbacks.
+      if (failingPluginName) {
+        const partialResources = this.pluginResources.get(failingPluginName) ?? [];
+        for (let i = partialResources.length - 1; i >= 0; i--) {
+          try { partialResources[i](); } catch { /* best-effort */ }
+        }
+        this.pluginResources.delete(failingPluginName);
+      }
+
+      // Rollback already-initialized plugins in reverse order
       this.logger.error('Plugin setup failed, rolling back initialized plugins');
       for (let i = initialized.length - 1; i >= 0; i--) {
         await this.teardownPlugin(initialized[i], context);
