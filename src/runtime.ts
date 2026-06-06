@@ -1,6 +1,6 @@
 import type { RuntimeContext, UIProvider, PluginDefinition, RuntimeOptions, Logger, PluginLoader } from './types.js';
 import { ConsoleLogger, RuntimeState, PluginSwapError } from './types.js';
-import { PluginRegistry, isNewerVersion } from './plugin-registry.js';
+import { PluginRegistry, isNewerVersion, runValidateConfig } from './plugin-registry.js';
 import { ScreenRegistry } from './screen-registry.js';
 import { ActionEngine } from './action-engine.js';
 import { EventBus } from './event-bus.js';
@@ -442,23 +442,12 @@ export class Runtime<TConfig = Record<string, unknown>> {
     // effect, so a rejection (return value or async throw) leaves the
     // running plugin in place. Previously this ran after teardown, which
     // meant a failed validation took out the running plugin too.
-    if (newPlugin.validateConfig) {
-      let result;
-      try {
-        result = await newPlugin.validateConfig(this.context.config);
-      } catch (err) {
-        throw new PluginSwapError(
-          newPlugin.name,
-          `config validation threw: ${(err as Error).message}`
-        );
-      }
-      const valid = typeof result === 'boolean' ? result : result.valid;
-      if (!valid) {
-        const errors = typeof result === 'object' && result.errors
-          ? result.errors.join(', ')
-          : 'config validation failed';
-        throw new PluginSwapError(newPlugin.name, `config validation failed: ${errors}`);
-      }
+    const validation = await runValidateConfig(newPlugin, this.context.config);
+    if (!validation.ok) {
+      throw new PluginSwapError(
+        newPlugin.name,
+        `${validation.threw ? 'config validation threw' : 'config validation failed'}: ${validation.errors}`,
+      );
     }
 
     // ── Commit phase ─────────────────────────────────────────────────────

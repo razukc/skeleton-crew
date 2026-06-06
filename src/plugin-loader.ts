@@ -99,7 +99,12 @@ export class DirectoryPluginLoader implements PluginLoader {
       }
     }
 
-    return this.sortPluginsByDependencies(plugins);
+    // Don't sort here. loadPlugins() will sort the combined list across all
+    // paths + packages, which is the only scope at which cross-source
+    // dependencies can resolve. Sorting per-directory was wasted work and
+    // invited a footgun: a future maintainer might assume loadFromPath's
+    // output is already canonical and bypass the outer sort.
+    return plugins;
   }
 
   /**

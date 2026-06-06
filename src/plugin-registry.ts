@@ -20,6 +20,51 @@ import { PluginDefinition, RuntimeContext, Logger, ValidationError, DuplicateReg
  *   isNewerVersion('2.0.0', '1.9.9')        // false
  *   isNewerVersion('not-semver', '1.0.0')   // false
  */
+/**
+ * Result of running a plugin's optional `validateConfig` hook, normalized.
+ *
+ * `ok: true`     — validation passed (or no hook was defined).
+ * `ok: false`    — validation rejected. `errors` is a human-readable summary
+ *                  (joined message list, or "config validation failed" if the
+ *                  hook returned a bare `false`). `threw` is true if the
+ *                  hook itself threw rather than returning a rejection — useful
+ *                  for callers that want to phrase the error differently
+ *                  (e.g. "config validation threw" vs "config validation failed").
+ *
+ * The helper never throws — callers translate the rejection into whatever
+ * error class fits their domain (ValidationError from initial setup,
+ * PluginSwapError from hot-swap, etc.).
+ */
+export type NormalizedValidateConfigResult =
+  | { ok: true }
+  | { ok: false; errors: string; threw: boolean };
+
+/**
+ * Runs `plugin.validateConfig(config)` if defined and normalizes the result.
+ * Catches synchronous and asynchronous throws so the caller doesn't have to.
+ * Returns `{ ok: true }` when the plugin has no validator.
+ *
+ * @see NormalizedValidateConfigResult for the return shape.
+ */
+export async function runValidateConfig<TConfig>(
+  plugin: PluginDefinition<TConfig>,
+  config: TConfig,
+): Promise<NormalizedValidateConfigResult> {
+  if (!plugin.validateConfig) return { ok: true };
+  let result;
+  try {
+    result = await plugin.validateConfig(config);
+  } catch (err) {
+    return { ok: false, errors: (err as Error).message ?? String(err), threw: true };
+  }
+  const valid = typeof result === 'boolean' ? result : result.valid;
+  if (valid) return { ok: true };
+  const errors = typeof result === 'object' && result.errors
+    ? result.errors.join(', ')
+    : 'config validation failed';
+  return { ok: false, errors, threw: false };
+}
+
 export function isNewerVersion(current: string, next: string): boolean {
   // Tolerate a leading `v` (e.g. `v1.2.3`) by stripping it before validation.
   // Anything else must be a literal valid SemVer 2.0 string — we deliberately
@@ -200,16 +245,9 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         // Config Validation (v0.3 Feature)
         // Validate plugin config before setup if validateConfig is defined
         if (plugin.validateConfig) {
-          const validationResult = await plugin.validateConfig(context.config);
-          const isValid = typeof validationResult === 'boolean'
-            ? validationResult
-            : validationResult.valid;
-
-          if (!isValid) {
-            const errors = typeof validationResult === 'object' && validationResult.errors
-              ? validationResult.errors.join(', ')
-              : 'config validation failed';
-            throw new ValidationError('Plugin', `config (${errors})`, plugin.name);
+          const validation = await runValidateConfig(plugin, context.config);
+          if (!validation.ok) {
+            throw new ValidationError('Plugin', `config (${validation.errors})`, plugin.name);
           }
           this.logger.debug(`Plugin "${plugin.name}" config validated successfully`);
         }
