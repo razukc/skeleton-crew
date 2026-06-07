@@ -20,7 +20,7 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "incremental": true,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "tsBuildInfoFile": "./node_modules/.cache/skeleton-crew.tsbuildinfo",
     "removeComments": true,
     "importHelpers": false,
     "downlevelIteration": false

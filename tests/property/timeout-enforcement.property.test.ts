@@ -21,17 +21,19 @@ describe('Property 6: Timeout Enforcement', () => {
         fc.string({ minLength: 1, maxLength: 20 }),
         // Generate random timeout (50-150ms)
         fc.integer({ min: 50, max: 150 }),
-        // Generate random delay that exceeds timeout (50-100ms extra)
-        fc.integer({ min: 50, max: 100 }),
-        async (actionId, timeout, extraDelay) => {
+        async (actionId, timeout) => {
           const logger = new ConsoleLogger();
           const engine = new ActionEngine(logger);
-          
+
           // Set a mock context
           const mockContext = {} as any;
           engine.setContext(mockContext);
-          
-          const handlerDelay = timeout + extraDelay;
+
+          // Handler waits 10× timeout + 500ms — large absolute gap so the
+          // timeout always wins the Promise.race even on loaded runners
+          // where event-loop jitter can delay timers (issue #15, same shape
+          // as #9).
+          const handlerDelay = timeout * 10 + 500;
           
           // Register action with timeout and handler that exceeds it
           engine.registerAction({
@@ -164,10 +166,12 @@ describe('Property 6: Timeout Enforcement', () => {
           engine.setContext(mockContext);
           
           // Register action with timeout and handler that exceeds it
+          // Handler waits 10× timeout + 500ms for jitter-safe race (see #9/#15).
+          const handlerDelay = timeout * 10 + 500;
           engine.registerAction({
             id: actionId,
             handler: async () => {
-              await new Promise(resolve => setTimeout(resolve, timeout + 80));
+              await new Promise(resolve => setTimeout(resolve, handlerDelay));
               return { success: true };
             },
             timeout
@@ -215,7 +219,9 @@ describe('Property 6: Timeout Enforcement', () => {
             const actionId = `action-${i}`;
             const timeout = 50 + (i * 30); // 50, 80, 110, etc.
             const shouldTimeout = i % 2 === 0; // Alternate between timeout and success
-            const delay = shouldTimeout ? timeout + 50 : timeout - 20;
+            // Timeout case: 10× timeout + 500ms for jitter-safe race (see #9/#15).
+            // Success case: complete in 1/4 of the timeout window for safety margin.
+            const delay = shouldTimeout ? timeout * 10 + 500 : Math.floor(timeout / 4);
             
             actions.push({ id: actionId, timeout, delay, shouldTimeout });
             

@@ -25,7 +25,6 @@ export {
     type ConfigValidationResult
 } from './types.js';
 // export * from './plugin-loader.js'; // EXCLUDED FOR BROWSER
-export * from './test-utils.js';
 export * from './plugins/ConfigPlugin.js';
 export { ActionEngine } from './action-engine.js';
 export { EventBus } from './event-bus.js';

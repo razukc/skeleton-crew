@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-07
+
+Tarball hygiene + test-utils API split + flaky-test deflake. No runtime behavior changes.
+
+### Changed (breaking — but unobserved)
+
+- **`createTestRuntime` and `MemoryLogger` no longer export from the root entry.** Import them from the new `skeleton-crew/test-utils` subpath instead:
+  ```ts
+  // before (0.6.0)
+  import { createTestRuntime, MemoryLogger } from 'skeleton-crew';
+  // after (0.6.1)
+  import { createTestRuntime, MemoryLogger } from 'skeleton-crew/test-utils';
+  ```
+  The 0.6.0 root export was undocumented and shipped only hours before this fix; we believe no consumers depended on it. Follows the industry convention (`vitest/utils`, `react-dom/test-utils`, etc.). Closes #8.
+
+### Fixed
+
+- **Stripped `dist/.tsbuildinfo` from the published tarball (#7).** TypeScript's incremental build cache was leaking into npm at 45 KB / ~17% of unpacked size. Moved `tsBuildInfoFile` to `./node_modules/.cache/skeleton-crew.tsbuildinfo`. Unpacked tarball size dropped from ~280 KB to ~228 KB.
+- **Deflaked `error-context-preservation.property.test.ts > should not wrap ActionTimeoutError in ActionExecutionError` (#9).** The test relied on a 20 ms gap between handler completion and timeout firing; on loaded CI runners event-loop jitter could reorder them and the handler would win the race. Widened the timeout floor (10→25 ms) and made the handler wait `timeout × 10 + 500 ms` so the race is uncontested regardless of jitter. This was the failure that aborted the original 0.6.0 release pipeline.
+- **Deflaked three timeout-enforcement property tests (#15).** Same shape as #9, same fix applied: `handlerDelay = timeout × 10 + 500`. Affected: `should throw ActionTimeoutError when action exceeds timeout`, `should throw ActionTimeoutError with distinguishable properties`, and `should handle multiple actions with different timeouts independently` (timeout-side delay only).
+
+### Internal
+
+- `prepublishOnly` still skips `npm test` for now (issue #9 mitigation). The timing flakes #9/#15 are fixed but we'll restore `npm test` to `prepublishOnly` in a follow-up PR after observing one or two CI runs to confirm the deflakes hold cross-platform.
+
 ## [0.6.0] - 2026-06-07
 
 > **Package renamed to `skeleton-crew` on npm.** Versions 0.1.1 through 0.4.1 were published as `skeleton-crew-runtime` under a different npm account. The 0.5.0 and 0.6.0 work landed in this repository (the secondary remote for the codebase) and is published as `skeleton-crew@0.6.0` under this account. Consumers on `skeleton-crew-runtime@^0.4.1` need to switch their package name to `skeleton-crew`; no other code changes are required — the API surface is identical. The CHANGELOG below preserves the 0.4.x → 0.6.0 development narrative.
