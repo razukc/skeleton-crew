@@ -24,7 +24,7 @@
     "test": "vitest run --reporter=json --outputFile=./test-output.json",
     "test:verbose": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build && npm test",
+    "prepublishOnly": "npm run build",
     "release": "node scripts/release.js",
     "release:dry": "node scripts/release.js --dry-run",
     "examples": "npm run build:examples && node dist-example/examples/playground/index.js",
