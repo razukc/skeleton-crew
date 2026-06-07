@@ -48,7 +48,6 @@ export {
   type ExecutionRecorder
 } from './types.js';
 export * from './plugin-loader.js';
-export * from './test-utils.js';
 export * from './plugins/ConfigPlugin.js';
 export * from './plugins/FeatureFlagPlugin.js';
 export { ActionEngine } from './action-engine.js';

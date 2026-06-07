@@ -174,23 +174,28 @@ describe('Property 7: Error Context Preservation', () => {
       fc.asyncProperty(
         // Generate random action ID
         fc.string({ minLength: 1, maxLength: 20 }),
-        // Generate random timeout (10-50ms for faster tests)
-        fc.integer({ min: 10, max: 50 }),
+        // Generate random timeout. Lower bound 25ms gives the timeout timer
+        // enough slack to fire reliably on loaded CI runners — at 10ms,
+        // event-loop jitter could push the timer past the handler's wait
+        // and the race would resolve as success. See issue #9.
+        fc.integer({ min: 25, max: 75 }),
         async (actionId, timeout) => {
           const logger = new ConsoleLogger();
           const actionEngine = new ActionEngine(logger);
-          
+
           // Create mock RuntimeContext
           const mockContext = {} as any;
           actionEngine.setContext(mockContext);
-          
-          // Register action with timeout that will exceed it
+
+          // Register action with timeout that will exceed it.
+          // Handler waits 10× timeout + 500ms — large absolute gap so the
+          // timeout always wins the Promise.race even when timers fire late.
+          const handlerDelay = timeout * 10 + 500;
           actionEngine.registerAction({
             id: actionId,
             timeout: timeout,
             handler: async () => {
-              // Wait longer than timeout
-              await new Promise(resolve => setTimeout(resolve, timeout + 20));
+              await new Promise(resolve => setTimeout(resolve, handlerDelay));
               return 'should not reach here';
             }
           });

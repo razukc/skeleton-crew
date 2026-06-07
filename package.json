@@ -1,6 +1,6 @@
 {
   "name": "skeleton-crew",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A minimal plugin runtime for building modular JavaScript applications.",
   "type": "module",
   "main": "dist/index.js",
@@ -11,6 +11,11 @@
       "browser": "./dist/index.browser.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./test-utils": {
+      "types": "./dist/test-utils.d.ts",
+      "import": "./dist/test-utils.js",
+      "default": "./dist/test-utils.js"
     }
   },
   "files": [
@@ -19,7 +24,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rimraf dist && tsc",
+    "build": "rimraf dist node_modules/.cache/skeleton-crew.tsbuildinfo && tsc",
     "build:examples": "rimraf dist-examples && tsc -p tsconfig.examples.json",
     "test": "vitest run --reporter=json --outputFile=./test-output.json",
     "test:verbose": "vitest run",
