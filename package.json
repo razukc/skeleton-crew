@@ -1,5 +1,5 @@
 {
-  "name": "skeleton-crew-runtime",
+  "name": "skeleton-crew",
   "version": "0.6.0",
   "description": "A minimal plugin runtime for building modular JavaScript applications.",
   "type": "module",

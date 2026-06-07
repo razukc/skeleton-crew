@@ -23,7 +23,7 @@ Native browser compatibility is now seamless.
 
 ```typescript
 // Browser Usage
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 // Works out of the box!
 const runtime = new Runtime({ ... }); 
@@ -33,7 +33,7 @@ const runtime = new Runtime({ ... });
 Type-safe inter-plugin communication without tight coupling.
 
 ```typescript
-import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 // Plugin A: Provides a service
 setup(ctx: RuntimeContext) {
@@ -93,7 +93,7 @@ const runtime = new Runtime({
 Full TypeScript support for your configuration.
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 interface AppConfig {
   apiUrl: string;
@@ -142,7 +142,7 @@ export const myPlugin: PluginDefinition = {
 Inject your existing services (Database, Logger, API Clients) into the Runtime so new plugins can use them.
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 import { db, logger, legacyApi } from './legacy-app';
 
 const runtime = new Runtime({
@@ -185,13 +185,13 @@ async function notifyUser(id, msg) {
 Goal: Move a monolithic `background.js` to Skeleton Crew Runtime.
 
 #### Step 1: Install
-`npm install skeleton-crew-runtime@^0.3.3`
+`npm install skeleton-crew@^0.3.3`
 
 #### Step 2: Initialize Runtime
 ```typescript
 // background.ts
-import { Runtime } from 'skeleton-crew-runtime';
-import type { PluginDefinition } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
+import type { PluginDefinition } from 'skeleton-crew';
 
 const runtime = new Runtime({
   hostContext: { browser: chrome } // Inject chrome API
@@ -203,7 +203,7 @@ await runtime.initialize();
 #### Step 3: Create a Plugin
 ```typescript
 // plugins/tabs.ts
-import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 export const tabsPlugin: PluginDefinition = {
   name: 'tabs',
@@ -238,10 +238,10 @@ await runtime.getContext().actions.runAction('tabs:create', 'https://google.com'
 
 ```typescript
 // ❌ Bad
-import { RuntimeContext } from 'skeleton-crew-runtime';
+import { RuntimeContext } from 'skeleton-crew';
 
 // ✅ Good
-import type { RuntimeContext } from 'skeleton-crew-runtime';
+import type { RuntimeContext } from 'skeleton-crew';
 ```
 
 ### 2. Circular Dependencies

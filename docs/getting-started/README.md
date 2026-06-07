@@ -57,10 +57,10 @@ After completing the getting started guides:
 
 ```bash
 # Install
-npm install skeleton-crew-runtime
+npm install skeleton-crew
 
 # Create a plugin
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const myPlugin = {
   name: 'my-plugin',
@@ -87,8 +87,8 @@ console.log(result); // "Hello, World!"
 ## Need Help?
 
 - **Installation issues**: Check [Troubleshooting](../troubleshooting/)
-- **Questions**: [GitHub Discussions](https://github.com/yourusername/skeleton-crew-runtime/discussions)
-- **Bugs**: [GitHub Issues](https://github.com/yourusername/skeleton-crew-runtime/issues)
+- **Questions**: [GitHub Discussions](https://github.com/yourusername/skeleton-crew/discussions)
+- **Bugs**: [GitHub Issues](https://github.com/yourusername/skeleton-crew/issues)
 
 ---
 

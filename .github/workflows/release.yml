@@ -55,7 +55,7 @@ jobs:
           ## Installation
 
           \`\`\`bash
-          npm install skeleton-crew-runtime@$TAG_NAME
+          npm install skeleton-crew@$TAG_NAME
           \`\`\`
 
           ## Documentation

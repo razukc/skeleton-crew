@@ -44,7 +44,7 @@ npm install @extn/runtime
 
 ```js
 import express from 'express';
-import { Runtime } from 'skeleton-crew-runtime'; // or relative import to your src/runtime.js
+import { Runtime } from 'skeleton-crew'; // or relative import to your src/runtime.js
 
 async function bootstrap() {
   const app = express();
@@ -127,7 +127,7 @@ export default {
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 import { ReactUIProvider } from 'skeleton-crew-ui-react'; // your adapter
 
 async function init() {
@@ -205,7 +205,7 @@ export default {
 
 ```js
 #!/usr/bin/env node
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 import yargs from 'yargs';
 
 async function main() {
@@ -346,7 +346,7 @@ node cli.js plugin run files.list --path=./src
 
 ## Quick code checklist to commit (example for Express)
 
-* [ ] `npm i skeleton-crew-runtime` (or link local path)
+* [ ] `npm i skeleton-crew` (or link local path)
 * [ ] Add `src/scr-bootstrap.js` with `new Runtime(); await runtime.initialize(); module.exports = runtime;`
 * [ ] Replace direct calls to external systems with SCR events where you want extensibility (e.g., after order created: `runtime.getContext().events.emit('order.created', order)`)
 * [ ] Create `plugins/webhook-plugin.js` and register via `runtime.pluginRegistry.registerPlugin(require(...))`

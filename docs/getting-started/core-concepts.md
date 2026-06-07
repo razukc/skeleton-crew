@@ -7,7 +7,7 @@ Understand the fundamental concepts of the Skeleton Crew Runtime: Plugins, Actio
 No more manual plugin registration! The runtime can automatically discover and load plugins:
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const runtime = new Runtime<MyConfig>({
   config: myConfig,
@@ -37,7 +37,7 @@ await runtime.initialize();
 A plugin is just an object with a name and a setup function. It encapsulates a feature.
 
 ```typescript
-import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 // Define your config type
 interface MyAppConfig {

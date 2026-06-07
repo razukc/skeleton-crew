@@ -81,7 +81,7 @@ ctx.logger.info('Hello');
 You can provide a custom logger when creating the runtime:
 
 ```typescript
-import { Runtime, Logger } from 'skeleton-crew-runtime';
+import { Runtime, Logger } from 'skeleton-crew';
 
 const customLogger: Logger = {
   debug: (msg, ...args) => console.debug(`[DEBUG] ${msg}`, ...args),
