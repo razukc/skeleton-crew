@@ -59,11 +59,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skcrew/runtime.git"
+    "url": "git+https://github.com/razukc/skeleton-crew.git"
   },
-  "homepage": "https://github.com/skcrew/runtime#readme",
+  "homepage": "https://github.com/razukc/skeleton-crew#readme",
   "bugs": {
-    "url": "https://github.com/skcrew/runtime/issues"
+    "url": "https://github.com/razukc/skeleton-crew/issues"
   },
   "engines": {
     "node": ">=18.0.0",
