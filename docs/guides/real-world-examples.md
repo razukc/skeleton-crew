@@ -61,7 +61,7 @@ export const createConfig = (): PreviewConfig => ({
 
 ```typescript
 // plugins/config.ts
-import { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 import { PreviewConfig } from '../config/types.js';
 
 export const configPlugin: PluginDefinition<PreviewConfig> = {
@@ -110,7 +110,7 @@ export const configPlugin: PluginDefinition<PreviewConfig> = {
 
 ```typescript
 // plugins/downloader.ts
-import { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 import { PreviewConfig } from '../config/types.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -270,7 +270,7 @@ export const downloaderPlugin: PluginDefinition<PreviewConfig> = {
 
 ```typescript
 // plugins/notifications.ts
-import { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 import { PreviewConfig } from '../config/types.js';
 
 interface NotificationParams {
@@ -372,7 +372,7 @@ function formatBytes(bytes: number): string {
 
 ```typescript
 // plugins/analytics.ts
-import { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 import { PreviewConfig } from '../config/types.js';
 
 interface AnalyticsEvent {
@@ -475,7 +475,7 @@ export const analyticsPlugin: PluginDefinition<PreviewConfig> = {
 
 ```typescript
 // background.ts
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 import { PreviewConfig, createConfig } from './config/index.js';
 import { configPlugin } from './plugins/config.js';
 import { downloaderPlugin } from './plugins/downloader.js';

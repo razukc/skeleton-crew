@@ -5,7 +5,7 @@
 Stop wiring up infrastructure. Start building features.
 
 ```bash
-npm install skeleton-crew-runtime@^0.6.0
+npm install skeleton-crew@^0.6.0
 ```
 ## What's New in v0.6.0
 
@@ -214,8 +214,8 @@ You're building something modular and you might know these challenges:
 Here's a complete plugin that adds a feature to your app:
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
-import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 // v0.2.0: Define your config interface
 interface AppConfig {
@@ -316,7 +316,7 @@ console.log(`Message sent: ${result.messageId}`);
 No more manual plugin registration! The runtime can automatically discover and load plugins:
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const runtime = new Runtime<MyConfig>({
   config: myConfig,
@@ -348,7 +348,7 @@ await runtime.initialize();
 A plugin is just an object with a name and a setup function:
 
 ```typescript
-import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 // v0.2.0: Define your config type
 interface MyAppConfig {
@@ -446,7 +446,7 @@ await ctx.events.emitAsync('order:created', order); // Wait for all handlers
 Direct synchronous access to typed configuration:
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 interface AppConfig {
   database: { url: string; maxConnections: number };
@@ -496,7 +496,7 @@ setup(ctx: RuntimeContext<AppConfig>) {
 Inject your existing services so plugins can use them:
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const runtime = new Runtime<AppConfig>({
   config: myTypedConfig,

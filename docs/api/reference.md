@@ -65,7 +65,7 @@ Creates a new Runtime instance with optional configuration.
 
 **Example:**
 ```typescript
-import { Runtime, ConsoleLogger } from "skeleton-crew-runtime";
+import { Runtime, ConsoleLogger } from "skeleton-crew";
 
 // v0.2.0: Define your config interface
 interface MyAppConfig {
@@ -841,7 +841,7 @@ Loads plugins from specified paths and packages.
 **Example:**
 
 ```typescript
-import { DirectoryPluginLoader, ConsoleLogger } from 'skeleton-crew-runtime';
+import { DirectoryPluginLoader, ConsoleLogger } from 'skeleton-crew';
 
 const loader = new DirectoryPluginLoader(new ConsoleLogger());
 
@@ -2054,7 +2054,7 @@ For automatic discovery, plugins must export a default plugin definition:
 **ES Module Export:**
 ```typescript
 // my-plugin.js
-import { PluginDefinition } from 'skeleton-crew-runtime';
+import { PluginDefinition } from 'skeleton-crew';
 
 const myPlugin: PluginDefinition = {
   name: 'my-plugin',
@@ -2082,7 +2082,7 @@ module.exports = {
 ### Complete Plugin Discovery Example
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 // Create runtime with mixed plugin loading strategies
 const runtime = new Runtime({
@@ -2176,7 +2176,7 @@ interface PerformanceMonitor {
 Production-ready no-op implementation with zero overhead.
 
 ```typescript
-import { NoOpPerformanceMonitor } from 'skeleton-crew-runtime';
+import { NoOpPerformanceMonitor } from 'skeleton-crew';
 
 const monitor = new NoOpPerformanceMonitor();
 const timer = monitor.startTimer('operation'); // No-op
@@ -2190,7 +2190,7 @@ console.log(monitor.getMetrics()); // {}
 Development implementation that records actual performance metrics.
 
 ```typescript
-import { SimplePerformanceMonitor } from 'skeleton-crew-runtime';
+import { SimplePerformanceMonitor } from 'skeleton-crew';
 
 const monitor = new SimplePerformanceMonitor();
 
@@ -2215,7 +2215,7 @@ console.log(monitor.getMetrics());
 Creates the appropriate performance monitor based on environment.
 
 ```typescript
-import { createPerformanceMonitor } from 'skeleton-crew-runtime';
+import { createPerformanceMonitor } from 'skeleton-crew';
 
 // Development - enabled monitoring
 const devMonitor = createPerformanceMonitor(true);
@@ -2234,7 +2234,7 @@ const monitor = createPerformanceMonitor(process.env.NODE_ENV === 'development')
 Enable performance monitoring via RuntimeOptions:
 
 ```typescript
-import { Runtime, createPerformanceMonitor } from 'skeleton-crew-runtime';
+import { Runtime, createPerformanceMonitor } from 'skeleton-crew';
 
 const runtime = new Runtime({
   enablePerformanceMonitoring: true, // Enables SimplePerformanceMonitor
@@ -2406,7 +2406,7 @@ This example shows migrating from v0.1.x to v0.2.0 with full type safety and mod
 
 ```typescript
 // Old way - no types, host context injection
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const runtime = new Runtime({
   hostContext: {
@@ -2446,7 +2446,7 @@ await runtime.initialize();
 
 ```typescript
 // New way - full type safety, clean architecture
-import { Runtime, PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import { Runtime, PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 // ✅ Define your config interface
 interface PreviewConfig {

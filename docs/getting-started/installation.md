@@ -11,19 +11,19 @@
 ## Install via npm
 
 ```bash
-npm install skeleton-crew-runtime
+npm install skeleton-crew
 ```
 
 ## Install via yarn
 
 ```bash
-yarn add skeleton-crew-runtime
+yarn add skeleton-crew
 ```
 
 ## Install via pnpm
 
 ```bash
-pnpm add skeleton-crew-runtime
+pnpm add skeleton-crew
 ```
 
 ## Verify Installation
@@ -32,7 +32,7 @@ Create a test file to verify installation:
 
 ```typescript
 // test.js or test.ts
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const runtime = new Runtime();
 console.log('Skeleton Crew Runtime installed successfully!');
@@ -77,7 +77,7 @@ All imports must use `.js` extensions:
 
 ```typescript
 // Correct
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 // In your own files
 import { myPlugin } from './plugins/my-plugin.js';

@@ -14,7 +14,7 @@ A simple notification plugin that:
 Create `plugins/notifications.ts`:
 
 ```typescript
-import type { PluginDefinition, RuntimeContext } from 'skeleton-crew-runtime';
+import type { PluginDefinition, RuntimeContext } from 'skeleton-crew';
 
 // Define your config
 interface AppConfig {
@@ -51,7 +51,7 @@ export const notificationsPlugin: PluginDefinition<AppConfig> = {
 Create `index.ts`:
 
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 import { notificationsPlugin } from './plugins/notifications.js';
 
 // Define config type

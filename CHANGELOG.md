@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] - 2026-06-07
 
+> **Package renamed to `skeleton-crew` on npm.** Versions 0.1.1 through 0.4.1 were published as `skeleton-crew-runtime` under a different npm account. The 0.5.0 and 0.6.0 work landed in this repository (the secondary remote for the codebase) and is published as `skeleton-crew@0.6.0` under this account. Consumers on `skeleton-crew-runtime@^0.4.1` need to switch their package name to `skeleton-crew`; no other code changes are required — the API surface is identical. The CHANGELOG below preserves the 0.4.x → 0.6.0 development narrative.
+
 True atomic hot-swap. The deferred reproducer from 0.5.0 is now green: a throw from the new plugin's setup is observably a no-op, and the old plugin keeps serving for the entire duration of the new plugin's setup. Closes the residual atomicity window 0.5.0 documented as "Known limitation".
 
 ### Changed (behavior)

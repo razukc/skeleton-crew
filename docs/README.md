@@ -204,12 +204,12 @@ Legacy applications can inject existing services into the runtime, allowing plug
 
 ### Installation
 ```bash
-npm install skeleton-crew-runtime
+npm install skeleton-crew
 ```
 
 ### Basic Usage
 ```typescript
-import { Runtime } from 'skeleton-crew-runtime';
+import { Runtime } from 'skeleton-crew';
 
 const runtime = new Runtime();
 runtime.registerPlugin(myPlugin);
@@ -241,9 +241,9 @@ const myPlugin = {
 
 ### Get Support
 - 📖 [Troubleshooting Guide](troubleshooting/)
-- 🐛 [Report a Bug](https://github.com/yourusername/skeleton-crew-runtime/issues)
-- 💬 [Ask Questions](https://github.com/yourusername/skeleton-crew-runtime/discussions)
-- 📧 [Email Support](mailto:skeleton-crew-runtime@gmail.com)
+- 🐛 [Report a Bug](https://github.com/yourusername/skeleton-crew/issues)
+- 💬 [Ask Questions](https://github.com/yourusername/skeleton-crew/discussions)
+- 📧 [Email Support](mailto:skeleton-crew@gmail.com)
 
 ---
 
@@ -252,7 +252,7 @@ const myPlugin = {
 Want to improve the documentation?
 
 1. Read the [Contributing Guide](../CONTRIBUTING.md)
-2. Check [open documentation issues](https://github.com/yourusername/skeleton-crew-runtime/issues?q=is%3Aissue+is%3Aopen+label%3Adocumentation)
+2. Check [open documentation issues](https://github.com/yourusername/skeleton-crew/issues?q=is%3Aissue+is%3Aopen+label%3Adocumentation)
 3. Submit a pull request
 
 **Documentation follows the painkiller approach**: Problem → Solution → Proof → Metrics
