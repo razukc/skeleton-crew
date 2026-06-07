@@ -65,17 +65,11 @@ describe('FINDING #1 — atomicity of swapPlugin', () => {
     expect(ctx.introspect.getPluginDefinition('p')?.version).toBe('1.0.0');
   });
 
-  // Skipped until 0.6 — true atomic swap (build-then-commit with shadow
-  // resource buckets) is out of scope for the 0.5.0 patch batch. Pre-flight
-  // checks now catch every recoverable failure mode; the residual window
-  // (new plugin's own setup throws after teardown) requires the action /
-  // screen / service registries to support coexisting (plugin, version)
-  // pairs, which is a registry-altitude change. The 0.5.0 docblock and
-  // README/CHANGELOG describe this limitation explicitly.
-  //
-  // Tracking: file GH issue "0.6: true atomic plugin swap" referencing
-  // option B2 from the code review's atomicity discussion.
-  it.skip('[deferred to 0.6] failed v2.setup leaves OLD plugin running', async () => {
+  // Resolved in 0.6.0: the residual window is closed by true atomic swap
+  // (buffered v2.setup against a SwapBuffer; commit synchronously on
+  // success, drop the buffer on failure). v1 stays fully live during
+  // v2.setup, so a throw from v2.setup is observably a no-op.
+  it('failed v2.setup leaves OLD plugin running (0.6)', async () => {
     const rt = new Runtime({ logger: silentLogger() });
     rt.registerPlugin({
       name: 'p',
@@ -271,19 +265,18 @@ describe('FINDING #7 — reset() name + deprecated clear() alias', () => {
     expect(() => registry.reset()).not.toThrow();
   });
 
-  it('clear() still works but emits a deprecation warning', async () => {
-    const logger = silentLogger();
-    const rt = new Runtime({ logger });
+  // 0.5.0 shipped clear() as a deprecated alias emitting logger.warn,
+  // promising removal in 0.6. As of 0.6.0 the method is gone — calling it
+  // is a TypeError. Callers that ignored the deprecation warning now
+  // notice; reset() is the only supported name.
+  it('clear() has been removed in 0.6 (the promised cleanup)', async () => {
+    const rt = new Runtime({ logger: silentLogger() });
     rt.registerPlugin(makePlugin('p', '1.0.0'));
     await rt.initialize();
     await rt.shutdown();
 
-    const registry = (rt as unknown as { plugins: PluginRegistry }).plugins;
-    registry.clear();
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/PluginRegistry\.clear\(\) is deprecated/i)
-    );
+    const registry = (rt as unknown as { plugins: PluginRegistry & { clear?: () => void } }).plugins;
+    expect(registry.clear).toBeUndefined();
   });
 });
 

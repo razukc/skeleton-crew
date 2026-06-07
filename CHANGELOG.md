@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-07
+
+True atomic hot-swap. The deferred reproducer from 0.5.0 is now green: a throw from the new plugin's setup is observably a no-op, and the old plugin keeps serving for the entire duration of the new plugin's setup. Closes the residual atomicity window 0.5.0 documented as "Known limitation".
+
+### Changed (behavior)
+
+- **`runtime.swapPlugin()` is now atomic across `setup` (#2).** The sequence is now: pre-flight (semver / deps / `validateConfig`) → buffered `setup` of the new plugin against a shadow context → synchronous commit to the live registries → `plugin:swapped` event → **then** dispose of the old plugin. Any throw from the new plugin's setup is dropped along with its buffered writes; the old plugin is observably untouched.
+- **`v1.dispose()` now runs AFTER commit, not before (#2).** Old order: `dispose v1 → setup v2`. New order: `setup v2 → commit → emit plugin:swapped → dispose v1`. Plugins that relied on `dispose` running before the replacement was live should move that work into either `setup` (if it pertains to the new plugin) or keep it in `dispose` (the v1 plugin is no longer in any registry by the time `dispose` runs, so external handle cleanup still works as intended).
+- **Read semantics inside `swapPlugin`'s buffered `setup` are buffer-first, live-fallback.** `ctx.services.get('foo')` checks the buffer first; if the new plugin hasn't registered `'foo'`, it falls through to the old plugin's live value. Same for `actions.hasAction`, `screens.getScreen` / `getAllScreens`, `services.has` / `list`, `plugins.getPlugin` / `getAllPlugins`.
+- **The new plugin's `events.on` subscriptions activate at commit time, not at the `on()` call site.** A subscription registered inside the new plugin's setup will NOT receive events emitted during that same setup. This avoids leaking subscriptions on a failed swap.
+- **Cross-resource teardown order is now deterministic.** When a plugin is torn down (`teardownPlugin`), its tracked resources are released in the order `events → services → screens → actions`. Within each resource type, LIFO is preserved (matches `tests/property/disposal-order-inverse.property.test.ts`'s plugin-level invariant).
+
+### Added
+
+- **`ActionEngine.replaceAtomic(def)` / `ScreenRegistry.replaceAtomic(def)` / `ServiceRegistry.replaceAtomic(name, value)`.** Single `Map.set`, no `DuplicateRegistrationError`, no transient empty state. Used by the swap commit step; available to plugin authors but discouraged outside hot-swap.
+- **`ActionEngine.unregister(id)` / `ScreenRegistry.unregister(id)`.** Idempotent counterparts to `register*` for code (typically swap commit) that doesn't hold the unregister closure. `ServiceRegistry.unregister` already existed.
+- **`PluginRegistry.getOwnedIds(name)`**, **`buildBufferedContext(...)`**, **`commitSwapBuffer(...)`**, **`runDispose(plugin, context)`** — new public methods supporting the atomic swap path.
+- **`src/swap-buffer.ts`** — `SwapBuffer<TConfig>` and `createSwapBuffer()`. The in-memory shadow registry the buffered context writes into. Exported for advanced use; most callers should not touch it.
+
+### Removed
+
+- **`PluginRegistry.clear()` is gone.** 0.5.0 deprecated it as a misleadingly-named alias for `reset()` and committed to removal in 0.6. Callers that ignored the deprecation warning will now get a `TypeError`. Replacement: `reset()` (same behavior — a pure state reset; call `executeDispose()` first if plugins are still initialized).
+
+### Internal
+
+- `pluginResources` is now `Map<string, OwnedIds>` instead of `Map<string, Array<() => void>>`. `OwnedIds` is `{ actions: Map<id, unsub>, screens: Map<id, unsub>, services: Map<name, unsub>, eventUnsubs: Array<unsub> }`. The id-keyed Maps give the commit step the "what did v1 own?" answer it needs to compute the retire-on-commit set when v2 omits an id v1 had.
+
+### Tests
+
+- `tests/unit/review-reproducers.test.ts` — the `it.skip('[deferred to 0.6] ...')` case is unskipped and passing.
+- `tests/unit/plugin-hotswap.test.ts` — new `describe('atomic swap (0.6)')` block with 10 cases covering the Q1–Q4 contract (resource survival on failed setup, replaceAtomic, retire-on-commit, buffer-first reads, live-fallback reads, explicit unregister rollback, event window during setup, buffered-subscription delay, emit/dispose ordering, concurrent swaps).
+- `tests/property/atomic-swap-rollback.property.test.ts` — new property test: for any combination of v1 resources, a v2 setup that throws at any step leaves the registries observably unchanged.
+- `tests/unit/plugin-hotswap.test.ts` — two pre-existing tests updated for the new contract: the "dispose before setup" assertion is flipped to "after", and the "failed swap leaves v1's action gone" assertion (a 0.5.0 documented casualty) is flipped to "failed swap leaves v1's action alive".
+
+### Known caveat
+
+If the new plugin's setup mutates a v1-owned service object (e.g. `ctx.services.get('v1Svc').foo = 'touched-by-v2'`) and then throws, the mutation persists — the buffer cannot roll back side effects on objects the old plugin owns. Atomicity is registry-level; mutation of borrowed objects is out of scope. Plugin authors should treat services owned by other plugins as read-only during their own setup.
+
 ## [0.5.0] - 2026-06-07
 
 A code-review-driven correctness release. 10 findings on `plugin-registry.ts` / `plugin-loader.ts` / `runtime.ts` (with `swapPlugin` as the focal point) were captured as failing reproducer tests on `main` and fixed one commit at a time. The reproducer file ships in this release as `tests/unit/review-reproducers.test.ts`. 9 reproducer assertions are now green; 1 is deferred to 0.6 (see "Known Limitation" below).
