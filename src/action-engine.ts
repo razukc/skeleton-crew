@@ -88,8 +88,17 @@ export class ActionEngine<TConfig = Record<string, unknown>> {
     this.logger.debug(`Action "${action.id}" registered successfully`);
 
     // Return unregister function (Requirements 4.1, 4.2, 4.4, 4.5)
+    //
+    // Identity-guarded: only remove the id if THIS definition is still the
+    // live one. After a hot-swap installs a different def under the same id
+    // (replaceAtomic), a stale closure — e.g. the old version's dispose firing
+    // post-commit, or a closure re-fired after the id was re-registered — must
+    // NOT delete the current owner's resource. See Finding 1 (dispose-after-
+    // commit) and the latent "stale closure deletes a re-registration" footgun.
     return () => {
-      this.actions.delete(action.id);
+      if (this.actions.get(action.id) === action) {
+        this.actions.delete(action.id);
+      }
     };
   }
 

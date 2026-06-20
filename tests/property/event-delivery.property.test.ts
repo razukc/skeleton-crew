@@ -4,6 +4,24 @@ import { Runtime } from '../../src/runtime.js';
 import type { PluginDefinition } from '../../src/types.js';
 
 /**
+ * Arbitrary for a plain, non-wildcard event name that does not collide with
+ * the runtime's own lifecycle events.
+ *
+ * A raw `fc.string()` can generate `"*"` or any prefix ending in `*` (e.g.
+ * `"r*"`), which the EventBus treats as a WILDCARD. A wildcard listener
+ * registered during plugin setup also matches the `runtime:initialized` /
+ * `runtime:shutdown` / `plugin:*` lifecycle events the Runtime emits — so the
+ * listener fires once on the lifecycle event AND once on the test's explicit
+ * emit, doubling the invocation count. That is correct wildcard behavior; the
+ * test simply must not generate wildcard or lifecycle-shadowing names. We also
+ * exclude the `runtime:`/`plugin:` prefixes so an exact-match name can't shadow
+ * a lifecycle event either. (Pre-existing flake, surfaced by adversarial testing.)
+ */
+const eventNameArb = fc
+  .string({ minLength: 1, maxLength: 20 })
+  .filter((s) => !s.includes('*') && !s.startsWith('runtime:') && !s.startsWith('plugin:'));
+
+/**
  * Property 46: Event delivery to all listeners
  * 
  * Feature: documentation-engine, Property 46: Event delivery to all listeners
@@ -19,7 +37,7 @@ describe('Property 46: Event delivery to all listeners', () => {
         // Generate number of listeners (1-10)
         fc.integer({ min: 1, max: 10 }),
         // Generate event name
-        fc.string({ minLength: 1, maxLength: 20 }),
+        eventNameArb,
         // Generate event data
         fc.anything(),
         async (listenerCount, eventName, eventData) => {
@@ -79,7 +97,7 @@ describe('Property 46: Event delivery to all listeners', () => {
         // Generate number of plugins (2-8)
         fc.integer({ min: 2, max: 8 }),
         // Generate event name
-        fc.string({ minLength: 1, maxLength: 20 }),
+        eventNameArb,
         // Generate event data
         fc.record({
           value: fc.integer(),
@@ -139,7 +157,7 @@ describe('Property 46: Event delivery to all listeners', () => {
         // Generate number of listeners (2-10)
         fc.integer({ min: 2, max: 10 }),
         // Generate event name
-        fc.string({ minLength: 1, maxLength: 20 }),
+        eventNameArb,
         async (listenerCount, eventName) => {
           const runtime = new Runtime();
           
@@ -189,7 +207,7 @@ describe('Property 46: Event delivery to all listeners', () => {
         // Generate which listeners should fail (at least one success before and after)
         fc.array(fc.integer({ min: 1, max: 8 }), { minLength: 1, maxLength: 3 }),
         // Generate event name
-        fc.string({ minLength: 1, maxLength: 20 }),
+        eventNameArb,
         async (listenerCount, failIndices, eventName) => {
           // Ensure fail indices are within bounds and unique
           const uniqueFailIndices = new Set(
@@ -258,7 +276,7 @@ describe('Property 46: Event delivery to all listeners', () => {
         // Generate number of late listeners (1-5)
         fc.integer({ min: 1, max: 5 }),
         // Generate event name
-        fc.string({ minLength: 1, maxLength: 20 }),
+        eventNameArb,
         async (initialListeners, lateListeners, eventName) => {
           const runtime = new Runtime();
           
@@ -322,7 +340,7 @@ describe('Property 46: Event delivery to all listeners', () => {
         // Generate which listeners to unsubscribe (at least one remains)
         fc.array(fc.integer({ min: 0, max: 9 }), { minLength: 1, maxLength: 5 }),
         // Generate event name
-        fc.string({ minLength: 1, maxLength: 20 }),
+        eventNameArb,
         async (listenerCount, unsubIndices, eventName) => {
           // Ensure unsub indices are within bounds and unique
           const uniqueUnsubIndices = new Set(

@@ -270,15 +270,22 @@ export function createFeatureFlagPlugin(config: FeatureFlagPluginConfig = {}): P
 
       // ── Audit helper ────────────────────────────────────────────────────
 
+      // Returns the entry's timestamp so callers can reference it without
+      // re-reading auditLog.at(-1) — which is undefined when maxAudit is 0
+      // (record pushes then immediately shifts the log back to empty). The
+      // old `auditLog.at(-1)!.timestamp` crashed setFlag/unsetFlag with a
+      // TypeError under maxAuditEntries:0. See Finding 5.
       function record(
         key: string,
         previousValue: FlagValue | undefined,
         newValue: FlagValue | undefined,
         source: FlagChangeSource
-      ): void {
-        const entry: FlagAuditEntry = Object.freeze({ key, previousValue, newValue, timestamp: Date.now(), source });
+      ): number {
+        const timestamp = Date.now();
+        const entry: FlagAuditEntry = Object.freeze({ key, previousValue, newValue, timestamp, source });
         auditLog.push(entry);
         if (auditLog.length > maxAudit) auditLog.shift();
+        return timestamp;
       }
 
       // ── 1. Seed defaults ────────────────────────────────────────────────
@@ -356,14 +363,14 @@ export function createFeatureFlagPlugin(config: FeatureFlagPluginConfig = {}): P
           const coerced = def ? coerce(key, value, def.type) : value;
           const previous = store.get(key);
           store.set(key, coerced);
-          record(key, previous, coerced, 'runtime');
+          const timestamp = record(key, previous, coerced, 'runtime');
 
           // Persist asynchronously — fire and forget, errors logged
           flagStore.save(key, coerced).catch((err) => {
             context.logger.error(`[feature-flags] Failed to persist flag "${key}"`, err);
           });
 
-          context.events.emit('flag:changed', { key, value: coerced, previous, timestamp: auditLog.at(-1)!.timestamp });
+          context.events.emit('flag:changed', { key, value: coerced, previous, timestamp });
           context.logger.debug(`[feature-flags] "${key}": ${String(previous)} → ${String(coerced)}`);
         },
 
@@ -374,13 +381,13 @@ export function createFeatureFlagPlugin(config: FeatureFlagPluginConfig = {}): P
 
           const previous = store.get(key);
           store.delete(key);
-          record(key, previous, undefined, 'runtime');
+          const timestamp = record(key, previous, undefined, 'runtime');
 
           flagStore.delete(key).catch((err) => {
             context.logger.error(`[feature-flags] Failed to delete persisted flag "${key}"`, err);
           });
 
-          context.events.emit('flag:removed', { key, previous, timestamp: auditLog.at(-1)!.timestamp });
+          context.events.emit('flag:removed', { key, previous, timestamp });
           context.logger.debug(`[feature-flags] Flag "${key}" removed`);
         },
 

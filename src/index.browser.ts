@@ -10,6 +10,8 @@ export {
     DuplicateRegistrationError,
     ActionTimeoutError,
     ActionExecutionError,
+    ActionMemoryError,
+    PluginSwapError,
     ConsoleLogger,
     RuntimeState,
     type PluginDefinition,
@@ -22,17 +24,22 @@ export {
     type PluginMetadata,
     type IntrospectionMetadata,
     type IntrospectionAPI,
-    type ConfigValidationResult
+    type ConfigValidationResult,
+    type TraceEntry,
+    type TraceStatus,
+    type ExecutionRecorder
 } from './types.js';
-// export * from './plugin-loader.js'; // EXCLUDED FOR BROWSER
+// export * from './plugin-loader.js'; // EXCLUDED FOR BROWSER (uses fs / fast-glob)
 export * from './plugins/ConfigPlugin.js';
+export * from './plugins/FeatureFlagPlugin.js';
 export { ActionEngine } from './action-engine.js';
 export { EventBus } from './event-bus.js';
-export { PluginRegistry } from './plugin-registry.js';
+export { PluginRegistry, isNewerVersion } from './plugin-registry.js';
 export { ServiceRegistry } from './service-registry.js';
 export { UIBridge } from './ui-bridge.js';
 export { RuntimeContextImpl } from './runtime-context.js';
-// Duplicate exports removed
+export { ExecutionRecorderImpl } from './execution-recorder.js';
+// Kept in parity with src/index.ts minus the Node-only plugin loader.
 
 export {
     createPerformanceMonitor,
