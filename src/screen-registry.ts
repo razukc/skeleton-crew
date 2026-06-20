@@ -49,9 +49,15 @@ export class ScreenRegistry {
     this.screens.set(screen.id, screen);
     this.logger.debug(`Screen "${screen.id}" registered successfully`);
 
-    // Return idempotent unregister function (Requirements 4.1, 4.2, 4.3, 4.4, 4.5)
+    // Return idempotent, identity-guarded unregister function.
+    // Only removes the id if THIS definition is still the live one, so a stale
+    // closure (e.g. an old plugin version's dispose firing after a hot-swap
+    // installed a new def under the same id) cannot delete the current owner's
+    // screen. See Finding 1. (Requirements 4.1, 4.2, 4.3, 4.4, 4.5)
     return () => {
-      this.screens.delete(screen.id);
+      if (this.screens.get(screen.id) === screen) {
+        this.screens.delete(screen.id);
+      }
     };
   }
 

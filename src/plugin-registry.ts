@@ -61,9 +61,24 @@ export async function runValidateConfig<TConfig>(
   } catch (err) {
     return { ok: false, errors: (err as Error).message ?? String(err), threw: true };
   }
-  const valid = typeof result === 'boolean' ? result : result.valid;
-  if (valid) return { ok: true };
-  const errors = typeof result === 'object' && result.errors
+  // Normalize defensively. The hook is typed to return boolean |
+  // ConfigValidationResult | Promise<…>, but untyped JS plugins can return
+  // anything — undefined, null, a number. Accessing `result.valid` on those
+  // threw a raw TypeError, breaking this helper's documented "never throws"
+  // contract (Finding 3). Treat any non-boolean, non-object-with-.valid result
+  // as a rejection rather than crashing.
+  if (typeof result === 'boolean') {
+    return result ? { ok: true } : { ok: false, errors: 'config validation failed', threw: false };
+  }
+  if (result == null || typeof result !== 'object') {
+    return {
+      ok: false,
+      errors: `config validation returned an invalid result (${result === null ? 'null' : typeof result})`,
+      threw: false,
+    };
+  }
+  if (result.valid) return { ok: true };
+  const errors = Array.isArray(result.errors)
     ? result.errors.join(', ')
     : 'config validation failed';
   return { ok: false, errors, threw: false };
@@ -267,6 +282,66 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
   }
 
   /**
+   * Returns the name of the plugin that currently owns a tracked resource id,
+   * or undefined if no tracked plugin owns it.
+   *
+   * Used by the hot-swap buffered context to reject cross-plugin hijacking:
+   * a swap of plugin A must not register (and later orphan-retire) an id that
+   * plugin B owns. See Finding 8. Ownership is tracked per plugin in
+   * {@link pluginResources}; an id registered outside plugin tracking (rare)
+   * has no owner here and is not guarded.
+   *
+   * @since 0.6.1
+   */
+  private ownerOf(kind: 'actions' | 'screens' | 'services', id: string): string | undefined {
+    for (const [name, owned] of this.pluginResources) {
+      if (owned[kind].has(id)) return name;
+    }
+    return undefined;
+  }
+
+  /**
+   * Wraps a live context so that `services.unregister(name)` becomes a no-op
+   * for any name in `protectedServices`. Used when running the OLD plugin's
+   * dispose AFTER an atomic swap commit: v1.dispose typically unregisters the
+   * services it registered, but if v2 re-registered the same name, that name
+   * is now v2's and must survive. See Finding 1.
+   *
+   * Only `services.unregister` is reachable by-name from a dispose body
+   * (actions/screens are retired via the value-identity-guarded closures
+   * returned by registerAction/registerScreen), so it is the only surface
+   * that needs guarding here.
+   *
+   * @since 0.6.1
+   */
+  buildPostSwapDisposeContext(
+    context: RuntimeContext<TConfig>,
+    protectedServices: ReadonlySet<string>,
+  ): RuntimeContext<TConfig> {
+    const liveServices = context.services;
+    const guardedServices = new Proxy(liveServices as object, {
+      get(target, prop) {
+        if (prop === 'unregister') {
+          return (name: string) => {
+            if (protectedServices.has(name)) return; // v2 owns this name now
+            return (target as typeof liveServices).unregister(name);
+          };
+        }
+        // Bind methods to the real services object so `this` stays correct.
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    return new Proxy(context as object, {
+      get(target, prop) {
+        if (prop === 'services') return guardedServices;
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as RuntimeContext<TConfig>;
+  }
+
+  /**
    * Builds a buffered context for v2.setup during an atomic hot-swap.
    *
    * Sibling to {@link buildTrackedContext}, but every write goes into the
@@ -299,6 +374,7 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
     newPlugin: PluginDefinition<TConfig>,
     liveContext: RuntimeContext<TConfig>,
     buffer: SwapBuffer<TConfig>,
+    configSnapshot?: Readonly<TConfig>,
   ): RuntimeContext<TConfig> {
     const bufferedPlugins = {
       registerPlugin: (p: PluginDefinition<TConfig>) => liveContext.plugins.registerPlugin(p),
@@ -336,7 +412,11 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
       },
       get plugins() { return bufferedPlugins; },
       get host() { return liveContext.host; },
-      get config() { return liveContext.config; },
+      // Pinned config snapshot (Finding 9): v2.setup sees the same config
+      // that validateConfig validated, even if the host calls updateConfig()
+      // while setup is awaiting. Falls back to live config when no snapshot
+      // is supplied (e.g. direct callers in tests).
+      get config() { return configSnapshot ?? liveContext.config; },
       get introspect() { return liveContext.introspect; },
       get logger() { return liveContext.logger; },
       get trace() { return liveContext.trace; },
@@ -347,8 +427,16 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
           if (existing && !existing.explicitlyRemoved) {
             throw new DuplicateRegistrationError('Action', action.id);
           }
-          // Live duplicate doesn't block: v2 is replacing v1's action by
-          // design. Only same-plugin double-register is a real duplicate.
+          // Cross-plugin ownership guard (Finding 8): a live id owned by a
+          // DIFFERENT plugin must not be silently overwritten — and later
+          // orphan-retired — by this swap. Only ids the swapping plugin
+          // already owns (or unowned ids) may be (re)registered here.
+          const liveOwner = this.ownerOf('actions', action.id);
+          if (liveOwner && liveOwner !== pluginName) {
+            throw new DuplicateRegistrationError('Action', action.id);
+          }
+          // Live duplicate from the SAME plugin doesn't block: v2 is replacing
+          // v1's action by design.
           buffer.actions.set(action.id, {
             def: action as unknown as ActionDefinition<unknown, unknown, TConfig>,
             explicitlyRemoved: false,
@@ -377,6 +465,11 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
           if (existing && !existing.explicitlyRemoved) {
             throw new DuplicateRegistrationError('Screen', screen.id);
           }
+          // Cross-plugin ownership guard (Finding 8).
+          const liveOwner = this.ownerOf('screens', screen.id);
+          if (liveOwner && liveOwner !== pluginName) {
+            throw new DuplicateRegistrationError('Screen', screen.id);
+          }
           buffer.screens.set(screen.id, { def: screen, explicitlyRemoved: false });
           return () => {
             const entry = buffer.screens.get(screen.id);
@@ -403,6 +496,11 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
         register: <T>(name: string, service: T) => {
           const existing = buffer.services.get(name);
           if (existing && !existing.explicitlyRemoved) {
+            throw new DuplicateRegistrationError('Service', name);
+          }
+          // Cross-plugin ownership guard (Finding 8).
+          const liveOwner = this.ownerOf('services', name);
+          if (liveOwner && liveOwner !== pluginName) {
             throw new DuplicateRegistrationError('Service', name);
           }
           buffer.services.set(name, { def: service, explicitlyRemoved: false });

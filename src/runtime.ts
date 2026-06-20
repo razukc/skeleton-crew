@@ -469,7 +469,15 @@ export class Runtime<TConfig = Record<string, unknown>> {
     // effect, so a rejection (return value or async throw) leaves the
     // running plugin in place. Previously this ran after teardown, which
     // meant a failed validation took out the running plugin too.
-    const validation = await runValidateConfig(newPlugin, this.context.config);
+    //
+    // Snapshot the config ONCE for the whole swap (Finding 9): validateConfig
+    // and v2.setup must observe the same config view. Without this, a host
+    // calling updateConfig() while v2.setup is awaiting would have v2
+    // validated against the old config but initialized against the new one
+    // (a TOCTOU read-skew). getConfig() returns the frozen current config;
+    // we pin it here so both phases agree.
+    const swapConfig = this.config;
+    const validation = await runValidateConfig(newPlugin, swapConfig);
     if (!validation.ok) {
       throw new PluginSwapError(
         newPlugin.name,
@@ -490,6 +498,7 @@ export class Runtime<TConfig = Record<string, unknown>> {
       newPlugin,
       this.context,
       buffer,
+      swapConfig,
     );
     try {
       await newPlugin.setup(bufferedCtx);
@@ -532,7 +541,15 @@ export class Runtime<TConfig = Record<string, unknown>> {
       newVersion: newPlugin.version,
     });
 
-    await this.plugins.runDispose(existing, this.context);
+    // v1.dispose runs against a context whose services.unregister is a no-op
+    // for any service NAME v2 now owns (Finding 1). A textbook v1.dispose
+    // unregisters the services it registered; for ids v2 re-registered, those
+    // are now v2's live services and must survive. Actions/screens are already
+    // protected by the value-identity guard in their unregister closures, so
+    // only the by-name services.unregister surface needs this wrapper.
+    const v2OwnedServices = new Set(this.plugins.getOwnedIds(newPlugin.name)?.services.keys() ?? []);
+    const disposeCtx = this.plugins.buildPostSwapDisposeContext(this.context, v2OwnedServices);
+    await this.plugins.runDispose(existing, disposeCtx);
 
     this.logger.info(`[hot-swap] Plugin "${newPlugin.name}" successfully swapped to ${newPlugin.version}`);
   }

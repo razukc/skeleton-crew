@@ -52,11 +52,15 @@ export class ServiceRegistry {
      * @throws Error if service is not found
      */
     get<T>(name: string): T {
-        const service = this.services.get(name);
-        if (!service) {
+        // Use has(), not a truthy check on the value: a service legitimately
+        // registered as a falsy value (0, false, '', NaN) must be retrievable.
+        // The old `if (!service)` reported such services present via has() but
+        // threw "not found" on get() — and crashed plugin init when a peer read
+        // one. See Finding 2.
+        if (!this.services.has(name)) {
             throw new Error(`Service "${name}" not found. Ensure the providing plugin is initialized.`);
         }
-        return service as T;
+        return this.services.get(name) as T;
     }
 
     /**

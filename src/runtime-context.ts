@@ -252,11 +252,22 @@ export class RuntimeContextImpl<TConfig = Record<string, unknown>> implements Ru
   }
 
   /**
-   * Host context - readonly access to injected host services
+   * Host context - readonly access to injected host services.
    * Requirements: 1.2, 1.3, 1.4
-   * 
-   * Returns a cached frozen shallow copy of the host context to prevent mutation.
-   * This ensures plugins can access host services but cannot modify them.
+   *
+   * Returns a cached, SHALLOW-frozen copy of the host context. The top-level
+   * mapping is immutable — a plugin cannot add, remove, or reassign a host key
+   * (`ctx.host.api = …` throws in strict mode). The freeze is intentionally
+   * shallow: host values are typically live service objects (db clients,
+   * loggers, emitters) whose methods rely on internal mutable state, so
+   * deep-freezing them would break the very services being shared.
+   *
+   * Therefore NESTED host objects remain mutable: `ctx.host.api.field = x`
+   * succeeds and is visible to the host and every other plugin. Host services
+   * are SHARED, not copied — treat them as live references. If you need a
+   * value a plugin cannot mutate, freeze it yourself before injecting it, or
+   * pass an immutable snapshot.
+   *
    * The frozen copy is cached to avoid memory leaks from repeated access.
    */
   get host(): Readonly<Record<string, unknown>> {
