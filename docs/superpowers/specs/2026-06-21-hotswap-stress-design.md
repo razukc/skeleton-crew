@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-21
 **Status:** Approved (design); pending implementation plan
-**Topic:** Stress-test skeleton-crew's atomic hot-swap (0.6.x) under real concurrent HTTP load, using a json-server-style REST harness on Express + lowdb.
+**Topic:** Stress-test skeleton-crew's atomic hot-swap (0.6.x) under real concurrent HTTP load, using `json-server` as a library-as-harness with scr fronting its request path.
 
 ## Goal
 
@@ -12,7 +12,7 @@ The unit probes hit the swap window deterministically via an `await` we control.
 
 ## Decisions (locked during brainstorming)
 
-- **Host:** a json-server-style REST API built on `express` + `lowdb`. We replicate json-server's REST contract and use its lowdb storage model rather than importing the `json-server` package — the integration we write is scr's, so the stress lands on scr's swap path, not on third-party Express plumbing. (json-server is the *inspiration/contract*; `express` + `lowdb` are the actual dependencies.)
+- **Host:** `typicode/json-server` consumed as a **real dependency** (not forked). It provides the REST contract and lowdb-backed storage; scr **fronts** the request path so every request flows through an scr action. The integration we write is scr's, so the stress lands on scr's swap path. (`express` + `autocannon` are the other deps; `lowdb` comes in transitively via json-server.)
 - **Capability under test:** atomic hot-swap (0.6.0 headline; no existing demo exercises it).
 - **End state:** adversarial stress test (find/break), not a polished upstreamable showcase.
 - **Artifact location:** `experiments/hotswap-stress/` in this repo (a test rig, not a `demo/` teaching app).
@@ -47,7 +47,7 @@ Two planes:
               POST /__swap/posts → runtime.swapPlugin(postsV2)
 ```
 
-**Library-vs-fork call:** we build the harness on `express` + `lowdb` and replicate json-server's REST contract, rather than forking json-server. A fork-and-graft into json-server's own router would mostly test *their* Express plumbing; reusing only their storage model + REST contract keeps the stress squarely on scr's swap path.
+**Library-vs-fork call:** we depend on the `json-server` package and put scr in front of its storage, rather than forking the repo and grafting into its router. A fork-and-graft would mostly test *their* Express plumbing; consuming json-server as a library while routing the data plane through scr actions keeps the stress squarely on scr's swap path. The `store-plugin` service wraps json-server's lowdb `db` handle, so json-server owns persistence and scr owns the request path.
 
 ## Section 2 — The swap surface
 
@@ -113,17 +113,17 @@ A stress test is only as good as its ability to **notice** a failure. "It didn't
 
 ## Section 5 — Scope & deliverables
 
-**Location:** `experiments/hotswap-stress/` (test rig, not a `demo/` teaching app, not a json-server fork). Depends on `skeleton-crew` (local workspace), `express`, `lowdb`, `autocannon`.
+**Location:** `experiments/hotswap-stress/` (test rig, not a `demo/` teaching app, not a json-server fork). Depends on `skeleton-crew` (local workspace), `json-server` (provides REST contract + lowdb storage), `express`, `autocannon`.
 
 ```
 experiments/hotswap-stress/
 ├── README.md              # how to run, what it proves
-├── package.json           # express, lowdb, autocannon, skeleton-crew (local)
+├── package.json           # json-server, express, autocannon, skeleton-crew (local)
 ├── src/
 │   ├── server.ts          # thin Express router → scr actions (data plane)
 │   ├── control.ts         # /__swap/* control plane → runtime.swapPlugin
 │   ├── plugins/
-│   │   ├── store-plugin.ts    # lowdb service + v2 dispose-clobber variant
+│   │   ├── store-plugin.ts    # wraps json-server's lowdb db handle as a service + v2 dispose-clobber variant
 │   │   ├── posts-plugin.ts    # CRUD actions + v2 variants (clean/throwing/hijack/skew)
 │   │   └── comments-plugin.ts # actions + post:deleted subscriber + v2 variant
 │   └── swap-timeline.ts   # high-res swap-phase logger (shared oracle util)
