@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-06-20
+
+Hardening release from adversarial testing (39 probes → 8 real defects + 2 test fixes). No API changes; all fixes are bug fixes. Full suite 887/887, stable across repeated runs. See PR #18.
+
+### Fixed
+
+#### Hot-swap atomicity (root cause: ownership tracked by id without verifying owner identity)
+
+- **`v1.dispose` could delete the new version's just-committed resources (critical).** After an atomic swap, the old plugin's `dispose` ran against the live context; a textbook `dispose` that unregistered the id it had registered would delete the *new* version's re-registration of the same id — breaking the bundled `FeatureFlagPlugin` under its own hot-swap. Unregister closures returned by `registerAction`/`registerScreen` are now value-identity-guarded (only delete if the live def is still theirs), and `v1.dispose` runs against a context whose `services.unregister` is a no-op for service names the new version now owns.
+- **A swap could hijack and then orphan another plugin's resources (high).** A swap of plugin A could register — and on a later swap, orphan-retire — an action/service/screen id owned by plugin B. The buffered swap context now rejects registering an id a *different* plugin owns live.
+- **Config read-skew across a swap (low).** `validateConfig` and the new version's `setup` could observe different config if the host called `updateConfig` mid-swap. Config is now snapshotted once at pre-flight and used for both phases.
+
+#### Other fixes
+
+- **`ServiceRegistry.get` rejected falsy service values (high).** A service registered as `0`, `false`, or `''` reported present via `has()` but threw "not found" on `get()` — and crashed plugin init when a peer read one. Now uses `has()` for the existence check.
+- **`runValidateConfig` violated its "never throws" contract (high).** A plugin whose `validateConfig` returned `undefined`/`null` (or any non-boolean, non-object) crashed with a raw `TypeError`. Non-conforming results are now normalized to a clean rejection.
+- **`FeatureFlagPlugin` crashed `setFlag`/`unsetFlag` at `maxAuditEntries: 0` (high).** `auditLog.at(-1)!.timestamp` was `undefined` when the capped log was empty. The audit `record()` helper now returns the timestamp directly.
+- **`ConfigPlugin` mutated the caller's host config (medium).** `config:set` did `Object.assign` onto `host.config` — the caller's own object — and threw if the host had frozen it. The plugin now owns an internal copy.
+- **Browser entry missing public error classes (medium).** `skeleton-crew` (browser build) now exports `PluginSwapError`, `ActionMemoryError`, `ExecutionRecorderImpl`, `isNewerVersion`, `FeatureFlagPlugin`, and trace types — parity with the Node entry, minus the Node-only plugin loader.
+
+### Documentation
+
+- Clarified that `ctx.host` is **shallow**-frozen: the top-level mapping is immutable, but nested host values stay mutable by design (they are live shared services). Hosts needing immutability must freeze values before injecting them.
+
+### Internal (tests)
+
+- De-flaked the `event-delivery` property test: random event names could be wildcards (`*`/`r*`) that matched lifecycle events (`runtime:initialized`), double-firing listeners. The generator now excludes wildcard and lifecycle-prefixed names.
+- De-flaked the `memory-leak` suite: vitest's `forks` pool cannot expose `global.gc`, so absolute KB thresholds measured uncollected garbage and failed nondeterministically. Replaced with a GC-aware bound (tight when GC is forceable, generous leak-catching ceiling otherwise).
+- Added `tests/unit/swap-path-regression.test.ts` and retained the `adversarial-probe*` suites as living regression tests.
+
 ## [0.6.1] - 2026-06-07
 
 Tarball hygiene + test-utils API split + flaky-test deflake. No runtime behavior changes.

@@ -1,6 +1,6 @@
 {
   "name": "skeleton-crew",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "A minimal plugin runtime for building modular JavaScript applications.",
   "type": "module",
   "main": "dist/index.js",
