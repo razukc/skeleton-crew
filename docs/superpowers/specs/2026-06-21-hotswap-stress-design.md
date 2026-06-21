@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-21
 **Status:** Approved (design); pending implementation plan
-**Topic:** Stress-test skeleton-crew's atomic hot-swap (0.6.x) under real concurrent HTTP load, using `json-server` as a library-as-harness with scr fronting its request path.
+**Topic:** Stress-test skeleton-crew's atomic hot-swap (0.6.x) under real concurrent HTTP load, using `fastify` as the HTTP harness with scr owning the request dispatch path.
 
 ## Goal
 
@@ -12,7 +12,9 @@ The unit probes hit the swap window deterministically via an `await` we control.
 
 ## Decisions (locked during brainstorming)
 
-- **Host:** `typicode/json-server` consumed as a **real dependency** (not forked). It provides the REST contract and lowdb-backed storage; scr **fronts** the request path so every request flows through an scr action. The integration we write is scr's, so the stress lands on scr's swap path. (`express` + `autocannon` are the other deps; `lowdb` comes in transitively via json-server.)
+- **Host:** `fastify` consumed as a **real dependency**. Every route is a thin shim — `GET /posts → runtime.runAction('posts:list')` — so scr genuinely owns the request dispatch path and the load lands on scr's swap path. (`autocannon` is the load generator.)
+  - *Why not json-server:* it was the original pick, but json-server 1.x's `createApp(db)` returns a tinyhttp app that owns its **own** routes — requests hitting it would bypass scr entirely, defeating the experiment. Fastify lets scr front the request path cleanly with no such conflict. Earlier versions explored: json-server 0.17 (classic `router.db` lowdb chain) and a shared-`Low<Data>`-handle consistency-oracle design; both dropped for the simpler Fastify host.
+- **Storage:** a plain **in-memory store** (a `Map`-backed object), wrapped as the `store` service. Dropping json-server also drops lowdb; an in-memory store is *better* for a timing-sensitive swap test — no file-I/O async noise to confound the swap-window signal.
 - **Capability under test:** atomic hot-swap (0.6.0 headline; no existing demo exercises it).
 - **End state:** adversarial stress test (find/break), not a polished upstreamable showcase.
 - **Artifact location:** `experiments/hotswap-stress/` in this repo (a test rig, not a `demo/` teaching app).
@@ -21,7 +23,7 @@ The unit probes hit the swap window deterministically via an `await` we control.
 
 Two planes:
 
-- **Data plane (hot, continuous):** `autocannon` → thin Express router → `runtime.runAction(...)` → lowdb. Every HTTP request flows through an scr action, which is what puts load on the swap path.
+- **Data plane (hot, continuous):** `autocannon` → Fastify route shim → `runtime.runAction(...)` → in-memory store. Every HTTP request flows through an scr action, which is what puts load on the swap path.
 - **Control plane:** `POST /__swap/*` → `runtime.swapPlugin(v2)`, fired *while the data plane is saturated*. The collision between the planes is the experiment.
 
 ```
@@ -29,7 +31,7 @@ Two planes:
                         │  hundreds of concurrent HTTP reqs
                         ▼
         ┌────────────────────────────────┐
-        │  Express app (thin router)      │
+        │  Fastify app (thin route shims) │
         │  GET /posts → runAction(        │
         │     'posts:list', query)        │
         │  POST /posts → runAction(       │
@@ -40,14 +42,14 @@ Two planes:
         │  scr Runtime (system under test)│
         │   • posts-plugin  → actions     │
         │   • comments-plugin             │
-        │   • store-plugin → service      │  ← lowdb-backed
+        │   • store-plugin → service      │  ← in-memory Map-backed
         └───────────────┬────────────────┘
                         ▲
                         │  control plane:
               POST /__swap/posts → runtime.swapPlugin(postsV2)
 ```
 
-**Library-vs-fork call:** we depend on the `json-server` package and put scr in front of its storage, rather than forking the repo and grafting into its router. A fork-and-graft would mostly test *their* Express plumbing; consuming json-server as a library while routing the data plane through scr actions keeps the stress squarely on scr's swap path. The `store-plugin` service wraps json-server's lowdb `db` handle, so json-server owns persistence and scr owns the request path.
+**Why Fastify owns nothing but transport:** the Fastify route handlers contain no business logic — each is a one-liner that calls `runAction` and returns the result. All CRUD logic lives in scr actions, all state in the `store` service. This is deliberate: it guarantees every request crosses the swap path, so a swap genuinely collides with in-flight work. Fastify is the load-bearing HTTP layer; scr is the system under test. (Fastify's `app.inject()` is also used in unit-level oracle checks where we want a request without a socket.)
 
 ## Section 2 — The swap surface
 
@@ -56,7 +58,7 @@ Three plugins, each a swap target, chosen so the harness exercises all three har
 | Plugin | Registers | Swap exercises |
 |---|---|---|
 | `posts-plugin` | actions `posts:list/get/create/update/delete` | action `replaceAtomic` — in-flight-call collision |
-| `store-plugin` | service `store` (lowdb handle) + actions | service re-register + post-commit dispose (Finding 1) |
+| `store-plugin` | service `store` (in-memory Map handle) + actions | service re-register + post-commit dispose (Finding 1) |
 | `comments-plugin` | actions + subscribes to `post:deleted` | queued event subscriptions committed at swap commit |
 
 **Six swap scenarios, each a `v2` variant fired under load:**
@@ -113,17 +115,17 @@ A stress test is only as good as its ability to **notice** a failure. "It didn't
 
 ## Section 5 — Scope & deliverables
 
-**Location:** `experiments/hotswap-stress/` (test rig, not a `demo/` teaching app, not a json-server fork). Depends on `skeleton-crew` (local workspace), `json-server` (provides REST contract + lowdb storage), `express`, `autocannon`.
+**Location:** `experiments/hotswap-stress/` (test rig, not a `demo/` teaching app). Depends on `skeleton-crew` (local workspace), `fastify` (HTTP harness), `autocannon` (load generator).
 
 ```
 experiments/hotswap-stress/
 ├── README.md              # how to run, what it proves
-├── package.json           # json-server, express, autocannon, skeleton-crew (local)
+├── package.json           # fastify, autocannon, skeleton-crew (local)
 ├── src/
-│   ├── server.ts          # thin Express router → scr actions (data plane)
+│   ├── server.ts          # thin Fastify route shims → scr actions (data plane)
 │   ├── control.ts         # /__swap/* control plane → runtime.swapPlugin
 │   ├── plugins/
-│   │   ├── store-plugin.ts    # wraps json-server's lowdb db handle as a service + v2 dispose-clobber variant
+│   │   ├── store-plugin.ts    # in-memory Map store as a service + v2 dispose-clobber variant
 │   │   ├── posts-plugin.ts    # CRUD actions + v2 variants (clean/throwing/hijack/skew)
 │   │   └── comments-plugin.ts # actions + post:deleted subscriber + v2 variant
 │   └── swap-timeline.ts   # high-res swap-phase logger (shared oracle util)
@@ -139,8 +141,9 @@ experiments/hotswap-stress/
 **Definition of done:** all six scenarios run to completion with oracles wired; `RESULTS.md` generated; any real finding minimized into a unit probe under scr's own `tests/`. A clean sweep is a valid done state.
 
 **Out of scope (YAGNI):**
-- No fork/PR to typicode/json-server — we replicate its REST contract on express + lowdb, nothing upstreamed.
+- No persistence — the store is in-memory only; no database, no lowdb, no file I/O (keeps the swap-window timing signal clean).
 - No UI/dashboard — `RESULTS.md` is the artifact.
 - No CI wiring — run-on-demand experiment, not a gate (load-heavy and timing-sensitive; CI would reintroduce the flakiness we fought).
 - No coverage of non-swap scr surfaces (event bus, retry, memory limits) — swap path only.
-- Not a json-server feature-parity clone — only the routes the six scenarios need.
+- No REST feature-parity with any real API — only the routes the six scenarios need (`/posts`, `/comments`, `/__swap/*`).
+- No Fastify plugins/middleware beyond a JSON body parser — route handlers are pure scr-action shims.
