@@ -23,6 +23,9 @@ export interface Comment {
 export interface Store {
   posts: Map<string, Post>;
   comments: Map<string, Comment>;
+  /** Monotonic id source for created posts/comments — never reused, so a
+   *  delete-then-create cannot collide with a surviving id. */
+  nextId: number;
 }
 
 /** Runtime config. `pageSize` is the value scenario 5 mutates mid-swap. */
@@ -38,5 +41,5 @@ export function createStore(): Store {
     posts.set(String(i), { id: String(i), title: `Post ${i}`, views: i });
   }
   comments.set('1', { id: '1', postId: '1', text: 'first' });
-  return { posts, comments };
+  return { posts, comments, nextId: 101 };
 }

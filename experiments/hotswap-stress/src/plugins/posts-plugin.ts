@@ -28,7 +28,7 @@ function registerPostsActions(
     id: 'posts:create',
     handler: ({ title }, c) => {
       const s = store(c);
-      const id = String(s.posts.size + 1);
+      const id = String(s.nextId++);
       const post: Post = { id, title, views: 0 };
       s.posts.set(id, post);
       return post;
