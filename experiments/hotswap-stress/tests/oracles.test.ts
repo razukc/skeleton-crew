@@ -24,7 +24,7 @@ describe('oracles', () => {
   it('oracleWholeShape fails on a mixed v1/v2 batch within one response', () => {
     // A single list response containing both tagged and untagged posts = torn.
     const torn = sample({ body: [{ id: '1', tag: 'v2' }, { id: '2' }] });
-    expect(oracleWholeShape(torn ? [torn] : []).pass).toBe(false);
+    expect(oracleWholeShape([torn]).pass).toBe(false);
   });
 
   it('oracleWholeShape passes when every response is uniformly v1 or v2', () => {
@@ -36,5 +36,24 @@ describe('oracles', () => {
   it('oracleConfigSnapshot fails when validate and setup saw different pageSize', () => {
     expect(oracleConfigSnapshot({ validated: 10, setup: 20 }).pass).toBe(false);
     expect(oracleConfigSnapshot({ validated: 10, setup: 10 }).pass).toBe(true);
+  });
+
+  it('oracleNoServerErrors ignores a PRE-phase 5xx (crash-signal discipline)', () => {
+    // A 5xx before the swap window is harness noise, not a finding.
+    const samples = [sample({ status: 200 }), sample({ status: 500, phase: 'pre' })];
+    expect(oracleNoServerErrors(samples).pass).toBe(true);
+  });
+
+  it('oracleNoServerErrors counts a status-0 connection failure as a server error', () => {
+    // The verify sampler records a failed fetch as status 0; mid/post-phase
+    // it must count as a failure.
+    const samples = [sample({ status: 200 }), sample({ status: 0, phase: 'post' })];
+    expect(oracleNoServerErrors(samples).pass).toBe(false);
+  });
+
+  it('oracleConfigSnapshot fails when the probe never ran (both undefined)', () => {
+    // The `validated !== undefined` guard must prevent undefined === undefined
+    // from green-lighting a probe that never recorded anything.
+    expect(oracleConfigSnapshot({}).pass).toBe(false);
   });
 });
