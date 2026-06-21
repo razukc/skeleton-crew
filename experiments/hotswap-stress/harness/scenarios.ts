@@ -16,6 +16,7 @@ import {
   oracleNoServerErrors,
   oracleWholeShape,
   oracleConfigSnapshot,
+  isServerError,
   type Verdict,
 } from './oracles.js';
 import type { StressConfig } from '../src/types.js';
@@ -72,143 +73,153 @@ async function driveScenario(opts: {
   cfg: ScenarioRunConfig;
   swap: SwapFn;
   initialConfig?: StressConfig;
-  fireSwap: (runtime: Runtime<StressConfig>, address: string, timeline: SwapTimeline) => Promise<void>;
+  fireSwap: (runtime: Runtime<StressConfig>, timeline: SwapTimeline) => Promise<void>;
   extraOracles?: (samples: Awaited<ReturnType<typeof verify>>) => Verdict[];
 }): Promise<ScenarioResult> {
+  if (opts.cfg.swapAtMs >= opts.cfg.durationSec * 1000) {
+    throw new Error(
+      `swapAtMs (${opts.cfg.swapAtMs}) must be < durationSec*1000 (${opts.cfg.durationSec * 1000}) ` +
+      `so the swap fires within the load window`,
+    );
+  }
+
   const timeline = new SwapTimeline();
   const { runtime, app, address } = await bootScenario(opts.swap, opts.initialConfig);
+  try {
+    const floodResult = flood(`${address}${opts.verifyPath}`, {
+      connections: opts.cfg.connections,
+      duration: opts.cfg.durationSec,
+    });
+    const verifyResult = verify(`${address}${opts.verifyPath}`, {
+      durationMs: opts.cfg.durationSec * 1000,
+      timeline,
+    });
 
-  const floodResult = flood(`${address}${opts.verifyPath}`, {
-    connections: opts.cfg.connections,
-    duration: opts.cfg.durationSec,
-  });
-  const verifyResult = verify(`${address}${opts.verifyPath}`, {
-    durationMs: opts.cfg.durationSec * 1000,
-    timeline,
-  });
+    // Fire the swap partway through the run.
+    await new Promise((r) => setTimeout(r, opts.cfg.swapAtMs));
+    await opts.fireSwap(runtime, timeline);
 
-  // Fire the swap partway through the run.
-  await new Promise((r) => setTimeout(r, opts.cfg.swapAtMs));
-  await opts.fireSwap(runtime, address, timeline);
+    const [samples, ac] = await Promise.all([verifyResult, floodResult]);
 
-  const [samples, ac] = await Promise.all([verifyResult, floodResult]);
+    const verdicts: Verdict[] = [oracleNoServerErrors(samples)];
+    if (opts.extraOracles) verdicts.push(...opts.extraOracles(samples));
 
-  const verdicts: Verdict[] = [oracleNoServerErrors(samples)];
-  if (opts.extraOracles) verdicts.push(...opts.extraOracles(samples));
+    return {
+      id: opts.id,
+      name: opts.name,
+      verdicts,
+      totalSamples: samples.length,
+      serverErrors: samples.filter(isServerError).length,
+      p99LatencyMs: ac.latency.p99,
+    };
+  } finally {
+    await app.close();
+    await runtime.shutdown();
+  }
+}
 
-  await app.close();
-  await runtime.shutdown();
-
+// Build a Scenario from its distinguishing parts, single-sourcing id/name/
+// verifyPath so the catalogue entry and the ScenarioResult can't drift.
+function makeScenario(spec: {
+  id: number;
+  name: string;
+  verifyPath: string;
+  initialConfig?: StressConfig;
+  fireSwap: (runtime: Runtime<StressConfig>, timeline: SwapTimeline) => Promise<void>;
+  extraOracles?: (samples: Awaited<ReturnType<typeof verify>>) => Verdict[];
+}): Scenario {
   return {
-    id: opts.id,
-    name: opts.name,
-    verdicts,
-    totalSamples: samples.length,
-    serverErrors: samples.filter((s) => (s.status >= 500 || s.status === 0) && s.phase !== 'pre').length,
-    p99LatencyMs: ac.latency.p99,
+    id: spec.id,
+    name: spec.name,
+    verifyPath: spec.verifyPath,
+    run: (cfg) =>
+      driveScenario({
+        id: spec.id,
+        name: spec.name,
+        verifyPath: spec.verifyPath,
+        cfg,
+        swap: async () => {},
+        initialConfig: spec.initialConfig,
+        fireSwap: spec.fireSwap,
+        extraOracles: spec.extraOracles,
+      }),
   };
 }
 
 export const SCENARIOS: Scenario[] = [
-  {
+  makeScenario({
     id: 1,
     name: 'Clean swap (posts v1 → v2 tagged)',
     verifyPath: '/posts',
-    run: (cfg) =>
-      driveScenario({
-        id: 1, name: 'Clean swap', verifyPath: '/posts', cfg,
-        swap: async () => {},
-        fireSwap: async (rt, _addr, tl) => {
-          tl.mark('swap:start');
-          await rt.swapPlugin(postsPluginV2Clean);
-          tl.mark('commit');
-        },
-        extraOracles: (samples) => [oracleWholeShape(samples)],
-      }),
-  },
-  {
+    fireSwap: async (rt, tl) => {
+      tl.mark('swap:start');
+      await rt.swapPlugin(postsPluginV2Clean);
+      tl.mark('commit');
+    },
+    extraOracles: (samples) => [oracleWholeShape(samples)],
+  }),
+  makeScenario({
     id: 2,
     name: 'Throwing swap (posts v2 setup throws)',
     verifyPath: '/posts',
-    run: (cfg) =>
-      driveScenario({
-        id: 2, name: 'Throwing swap', verifyPath: '/posts', cfg,
-        swap: async () => {},
-        fireSwap: async (rt, _addr, tl) => {
-          tl.mark('swap:start');
-          await rt.swapPlugin(postsPluginV2Throwing).catch(() => { /* expected reject */ });
-          tl.mark('commit');
-        },
-      }),
-  },
-  {
+    fireSwap: async (rt, tl) => {
+      tl.mark('swap:start');
+      await rt.swapPlugin(postsPluginV2Throwing).catch(() => { /* expected reject */ });
+      tl.mark('commit');
+    },
+  }),
+  makeScenario({
     id: 3,
     name: 'Dispose-clobber (store v2 dispose unregisters store)',
     verifyPath: '/posts',
-    run: (cfg) =>
-      driveScenario({
-        id: 3, name: 'Dispose-clobber', verifyPath: '/posts', cfg,
-        swap: async () => {},
-        fireSwap: async (rt, _addr, tl) => {
-          tl.mark('swap:start');
-          await rt.swapPlugin(storePluginV2);
-          tl.mark('commit');
-        },
-      }),
-  },
-  {
+    fireSwap: async (rt, tl) => {
+      tl.mark('swap:start');
+      await rt.swapPlugin(storePluginV2);
+      tl.mark('commit');
+    },
+  }),
+  makeScenario({
     id: 4,
     name: 'Cross-plugin hijack (posts v2 grabs comments:list)',
     verifyPath: '/comments',
-    run: (cfg) =>
-      driveScenario({
-        id: 4, name: 'Cross-plugin hijack', verifyPath: '/comments', cfg,
-        swap: async () => {},
-        fireSwap: async (rt, _addr, tl) => {
-          tl.mark('swap:start');
-          await rt.swapPlugin(postsPluginV2Hijack).catch(() => { /* expected reject */ });
-          tl.mark('commit');
-        },
-      }),
-  },
-  {
+    fireSwap: async (rt, tl) => {
+      tl.mark('swap:start');
+      await rt.swapPlugin(postsPluginV2Hijack).catch(() => { /* expected reject */ });
+      tl.mark('commit');
+    },
+  }),
+  makeScenario({
     id: 5,
     name: 'Config skew (updateConfig during posts v2 await window)',
     verifyPath: '/posts',
-    run: (cfg) =>
-      driveScenario({
-        id: 5, name: 'Config skew', verifyPath: '/posts', cfg,
-        swap: async () => {},
-        fireSwap: async (rt, _addr, tl) => {
-          tl.mark('swap:start');
-          const swapDone = rt.swapPlugin(postsPluginV2Skew);
-          // Mutate config during the setup await window.
-          await new Promise((r) => setTimeout(r, 0));
-          rt.updateConfig({ pageSize: 20 });
-          await swapDone.catch(() => {});
-          tl.mark('commit');
-        },
-        extraOracles: () => [oracleConfigSnapshot(skewProbe)],
-      }),
-  },
-  {
+    fireSwap: async (rt, tl) => {
+      tl.mark('swap:start');
+      const swapDone = rt.swapPlugin(postsPluginV2Skew);
+      // Mutate config during the setup await window. NOTE: this relies on
+      // postsPluginV2Skew.setup awaiting setImmediate (check phase) while we
+      // use setTimeout(0) (timers phase) so this updateConfig lands before
+      // setup resumes. If that plugin's await primitive changes, this timing
+      // coupling breaks — keep them paired.
+      await new Promise((r) => setTimeout(r, 0));
+      rt.updateConfig({ pageSize: 20 });
+      await swapDone.catch(() => {});
+      tl.mark('commit');
+    },
+    extraOracles: () => [oracleConfigSnapshot(skewProbe)],
+  }),
+  makeScenario({
     id: 6,
     name: 'Concurrent dual-swap (posts + comments same tick)',
     verifyPath: '/posts',
-    run: (cfg) =>
-      driveScenario({
-        id: 6, name: 'Concurrent dual-swap', verifyPath: '/posts', cfg,
-        swap: async () => {},
-        fireSwap: async (rt, _addr, tl) => {
-          tl.mark('swap:start');
-          // Both swaps fired without awaiting between them — they race through
-          // buffered-setup → commit against the same live registries.
-          const a = rt.swapPlugin(postsPluginV2Clean);
-          const b = rt.swapPlugin(commentsPluginV2);
-          await Promise.allSettled([a, b]);
-          tl.mark('commit');
-        },
-        extraOracles: (samples) => [oracleWholeShape(samples)],
-      }),
-  },
+    fireSwap: async (rt, tl) => {
+      tl.mark('swap:start');
+      // Both swaps fired without awaiting between them — they race through
+      // buffered-setup → commit against the same live registries.
+      const a = rt.swapPlugin(postsPluginV2Clean);
+      const b = rt.swapPlugin(commentsPluginV2);
+      await Promise.allSettled([a, b]);
+      tl.mark('commit');
+    },
+    extraOracles: (samples) => [oracleWholeShape(samples)],
+  }),
 ];

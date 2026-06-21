@@ -5,13 +5,18 @@ export interface Verdict {
   detail: string;
 }
 
+/** A sample is a server error if it's a 5xx or a connection failure (status 0),
+ *  and it landed in the swap window (not the pre-swap warmup). Shared by the
+ *  oracle and the per-scenario serverErrors tally so the two can't diverge. */
+export function isServerError(s: Sample): boolean {
+  return (s.status >= 500 || s.status === 0) && s.phase !== 'pre';
+}
+
 /** True server errors (5xx) or connection failures (status 0) are failures.
  *  404s are ordinary and ignored. Only mid/post-phase samples are judged —
  *  a pre-swap blip is harness noise. */
 export function oracleNoServerErrors(samples: Sample[]): Verdict {
-  const bad = samples.filter(
-    (s) => (s.status >= 500 || s.status === 0) && s.phase !== 'pre',
-  );
+  const bad = samples.filter(isServerError);
   return {
     pass: bad.length === 0,
     detail: bad.length === 0
