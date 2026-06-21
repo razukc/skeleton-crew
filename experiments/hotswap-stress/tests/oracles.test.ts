@@ -3,6 +3,8 @@ import {
   oracleNoServerErrors,
   oracleWholeShape,
   oracleConfigSnapshot,
+  oracleListIsArray,
+  oracleAllV1,
 } from '../harness/oracles.js';
 import type { Sample } from '../harness/load.js';
 
@@ -55,5 +57,29 @@ describe('oracles', () => {
     // The `validated !== undefined` guard must prevent undefined === undefined
     // from green-lighting a probe that never recorded anything.
     expect(oracleConfigSnapshot({}).pass).toBe(false);
+  });
+
+  it('oracleListIsArray fails when a 200 response body is a non-array scalar (hijack)', () => {
+    // A committed cross-plugin hijack returns the scalar 'HIJACK' with status 200 —
+    // invisible to a 5xx check, so this body-shape oracle must catch it.
+    const ok = sample({ status: 200, body: [{ id: '1' }] });
+    const hijacked = sample({ status: 200, body: 'HIJACK' });
+    expect(oracleListIsArray([ok]).pass).toBe(true);
+    expect(oracleListIsArray([ok, hijacked]).pass).toBe(false);
+  });
+
+  it('oracleListIsArray ignores non-200 samples (404 body is an object, not a tear)', () => {
+    // Only successful responses must be arrays; a 404 error object is ordinary.
+    const notFound = sample({ status: 404, body: { error: 'not found' } });
+    expect(oracleListIsArray([notFound]).pass).toBe(true);
+  });
+
+  it('oracleAllV1 fails when any response body contains a v2-tagged post (leaked rollback)', () => {
+    // A throwing swap must roll back cleanly; if its v2 tagger leaked, a live
+    // /posts body would carry tag:'v2'. The all-v1 oracle asserts it never does.
+    const v1 = sample({ body: [{ id: '1' }, { id: '2' }] });
+    const leaked = sample({ body: [{ id: '1', tag: 'v2' }] });
+    expect(oracleAllV1([v1]).pass).toBe(true);
+    expect(oracleAllV1([v1, leaked]).pass).toBe(false);
   });
 });

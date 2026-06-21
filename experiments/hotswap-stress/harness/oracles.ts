@@ -53,3 +53,36 @@ export function oracleConfigSnapshot(probe: { validated?: number; setup?: number
       : `config skew: validate saw ${probe.validated}, setup saw ${probe.setup}`,
   };
 }
+
+/** Every successful (200) list response must be a JSON array. A cross-plugin
+ *  hijack that committed would return a scalar (e.g. the string 'HIJACK') with
+ *  status 200 — invisible to the 5xx check, caught here. Non-200 samples (404
+ *  error objects, status-0 failures) are out of scope and ignored. */
+export function oracleListIsArray(samples: Sample[]): Verdict {
+  const bad = samples.find((s) => s.status === 200 && !Array.isArray(s.body));
+  return {
+    pass: !bad,
+    detail: bad
+      ? `non-array 200 body in phase ${bad.phase}: ${JSON.stringify(bad.body)}`
+      : `all ${samples.length} successful responses are arrays`,
+  };
+}
+
+/** No response body may contain a v2-tagged post. The invariant for a swap that
+ *  must NOT take effect (a throwing swap that rolls back): the live response set
+ *  stays uniformly v1. Distinct from oracleWholeShape, which also passes when
+ *  every response is v2 — wrong for a swap expected to be rejected. */
+export function oracleAllV1(samples: Sample[]): Verdict {
+  for (const s of samples) {
+    if (!Array.isArray(s.body)) continue;
+    const arr = s.body as Array<{ tag?: string }>;
+    const taggedV2 = arr.find((p) => p.tag === 'v2');
+    if (taggedV2) {
+      return {
+        pass: false,
+        detail: `v2-tagged post leaked into a live response in phase ${s.phase} (swap should have rolled back)`,
+      };
+    }
+  }
+  return { pass: true, detail: `all ${samples.length} responses uniformly v1 (no v2 tags)` };
+}

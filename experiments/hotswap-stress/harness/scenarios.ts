@@ -16,6 +16,8 @@ import {
   oracleNoServerErrors,
   oracleWholeShape,
   oracleConfigSnapshot,
+  oracleListIsArray,
+  oracleAllV1,
   isServerError,
   type Verdict,
 } from './oracles.js';
@@ -167,6 +169,7 @@ export const SCENARIOS: Scenario[] = [
       await rt.swapPlugin(postsPluginV2Throwing).catch(() => { /* expected reject */ });
       tl.mark('commit');
     },
+    extraOracles: (samples) => [oracleAllV1(samples)],
   }),
   makeScenario({
     id: 3,
@@ -187,6 +190,7 @@ export const SCENARIOS: Scenario[] = [
       await rt.swapPlugin(postsPluginV2Hijack).catch(() => { /* expected reject */ });
       tl.mark('commit');
     },
+    extraOracles: (samples) => [oracleListIsArray(samples)],
   }),
   makeScenario({
     id: 5,
