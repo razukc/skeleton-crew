@@ -55,7 +55,7 @@ export function buildServer(runtime: Runtime<StressConfig>, swap: SwapFn): Fasti
       await swap(req.params.plugin);
       return reply.code(200).send({ swapped: req.params.plugin });
     } catch (err) {
-      return reply.code(409).send({ error: (err as Error).message });
+      return reply.code(409).send({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 

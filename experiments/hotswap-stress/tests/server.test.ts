@@ -68,4 +68,15 @@ describe('buildServer', () => {
     await app.close();
     await rt.shutdown();
   });
+
+  it('a throwing action surfaces as HTTP 500 (the oracle’s swap-failure signal)', async () => {
+    const { rt, app } = await bootServer();
+    // Force the action layer to throw: after shutdown, getContext()/runAction
+    // reject, which Fastify maps to a 500 — the signal the oracle counts as a
+    // swap-window failure (distinct from an ordinary 404).
+    await rt.shutdown();
+    const res = await app.inject({ method: 'GET', url: '/posts' });
+    expect(res.statusCode).toBe(500);
+    await app.close();
+  });
 });
