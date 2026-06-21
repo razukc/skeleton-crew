@@ -27,6 +27,8 @@ describe('store-plugin', () => {
     // v1.dispose ran AFTER commit and called services.unregister('store');
     // the identity guard must keep v2's store alive.
     expect(ctx.services.has('store')).toBe(true);
+    const store = ctx.services.get<Store>('store');
+    expect(store.posts.size).toBe(100); // v1's seeded data carried forward through the swap
     await rt.shutdown();
   });
 });
