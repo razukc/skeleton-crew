@@ -17,13 +17,19 @@ export interface ExperimentResults {
 }
 
 export function renderResults(r: ExperimentResults): string {
+  // A 0-token median means no repeat of that feature built successfully in that
+  // arm — render it as a missing cell, never a misleading "free" 0.
+  const tok = (n: number): string => (n > 0 ? String(n) : '— (no build)');
   const rows = r.perFeature.map((f) =>
-    `| ${f.feature} | ${f.scrTokensMedian} | ${f.monoTokensMedian} | ${f.scrSurface} | ${f.monoSurface} | ${f.scrForeignBreak} | ${f.monoForeignBreak} |`
+    `| ${f.feature} | ${tok(f.scrTokensMedian)} | ${tok(f.monoTokensMedian)} | ${f.scrSurface} | ${f.monoSurface} | ${f.scrForeignBreak} | ${f.monoForeignBreak} |`
   ).join('\n');
 
+  const inWindow = r.crossoverIndex >= 2 && r.crossoverIndex <= 5; // f3–f6, the registered window
   const crossover = r.crossoverIndex < 0
     ? `**no crossover** within ${r.perFeature.length} features — SCR's overhead did not amortize at this app size.`
-    : `**Crossover at feature index ${r.crossoverIndex}** (\`${r.perFeature[r.crossoverIndex]?.feature}\`): SCR cumulative cost drops below the monolith here.`;
+    : inWindow
+      ? `**Crossover at feature index ${r.crossoverIndex}** (\`${r.perFeature[r.crossoverIndex]?.feature}\`): SCR cumulative cost drops below the monolith here.`
+      : `**Transient crossover at feature index ${r.crossoverIndex}** (\`${r.perFeature[r.crossoverIndex]?.feature}\`), but OUTSIDE the pre-registered f3–f6 window and not sustained — SCR cumulative cost ends *above* the monolith by the final feature. This does not confirm the amortization hypothesis.`;
 
   const preds = r.predictions.map((p) =>
     `| ${p.claim} | ${p.predicted} | ${p.observed} | ${p.hit ? '✅' : '❌'} |`

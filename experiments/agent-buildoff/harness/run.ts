@@ -69,9 +69,16 @@ async function buildFeatureInArm(
   }
   sandboxes.forEach((s) => s?.cleanup());
 
+  // Only successful builds carry a meaningful cost/surface. A timed-out or
+  // crashed run reports 0 tokens (and a partial read count) — that is "no build
+  // happened", not "a free build". Folding those into the median collapses it
+  // toward 0 and can fabricate a false cost-crossover (the f2 timeout artifact).
+  // Drop failed runs before aggregating; an all-failed feature yields an empty
+  // series, which median() reports as 0 and crossoverIndex() then skips.
+  const okRuns = runs.filter((x) => x.agent.ok);
   return {
-    tokens: runs.map((x) => x.agent.inputTokens + x.agent.outputTokens),
-    surface: runs.map((x) => x.agent.readToolCalls),
+    tokens: okRuns.map((x) => x.agent.inputTokens + x.agent.outputTokens),
+    surface: okRuns.map((x) => x.agent.readToolCalls),
     foreign: runs.map((x) => foreignRegressions(x, builtFeatures)),
     landed: chosen !== null,
   };
@@ -156,8 +163,10 @@ async function runParallel(): Promise<ExperimentResults['parallel']> {
   return out;
 }
 
-/** Hand-map each pre-registered prediction to the observed metric. */
-function scorePredictions(r: Omit<ExperimentResults, 'predictions'>): ExperimentResults['predictions'] {
+/** Hand-map each pre-registered prediction to the observed metric.
+ *  Exported so the honest-recompute path and tests can score a results object
+ *  without re-running the live (token-expensive) phases. */
+export function scorePredictions(r: Omit<ExperimentResults, 'predictions'>): ExperimentResults['predictions'] {
   const first = r.perFeature[0];
   const last = r.perFeature[r.perFeature.length - 1];
   const scrSurfaceFlat = r.perFeature.length > 1
@@ -171,9 +180,15 @@ function scorePredictions(r: Omit<ExperimentResults, 'predictions'>): Experiment
     { claim: 'SCR tokens/feature by f8 LOWER than mono', predicted: 'yes',
       observed: last ? (last.scrTokensMedian < last.monoTokensMedian ? 'yes' : 'no') : 'n/a',
       hit: !!last && last.scrTokensMedian < last.monoTokensMedian },
+    // PREDICTIONS.md #3 registered the crossover "somewhere in f3–f6" — indices
+    // 2..5. A crossover outside that window does NOT confirm the registered
+    // claim (an early f1/f2 crossover is the ceremony-not-yet-paid regime, the
+    // opposite of the amortization the prediction is about).
     { claim: 'Cost crossover index exists (f3–f6)', predicted: 'yes',
-      observed: r.crossoverIndex >= 0 ? `index ${r.crossoverIndex}` : 'none',
-      hit: r.crossoverIndex >= 0 },
+      observed: r.crossoverIndex >= 0
+        ? `index ${r.crossoverIndex}${r.crossoverIndex >= 2 && r.crossoverIndex <= 5 ? '' : ' (outside f3–f6)'}`
+        : 'none',
+      hit: r.crossoverIndex >= 2 && r.crossoverIndex <= 5 },
     { claim: 'SCR read-surface roughly FLAT in N', predicted: 'yes',
       observed: scrSurfaceFlat ? 'flat' : 'grows', hit: scrSurfaceFlat },
     { claim: 'Mono read-surface GROWS in N', predicted: 'yes',
