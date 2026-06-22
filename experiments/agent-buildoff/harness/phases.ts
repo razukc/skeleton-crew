@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync, existsSync, cpSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { runAgent } from './agent-invoke.js';
 import { createSandbox, type Sandbox } from './sandbox.js';
 import { runOracles, summarize } from './oracle-runner.js';
@@ -44,17 +44,12 @@ export function buildPrompt(specPath: string, arm: Arm): string {
   return tmpl.replace('{{FEATURE_SPEC}}', spec).replace('{{ARM_CONVENTION}}', ARM_CONVENTION[arm]);
 }
 
-/** git name-only diff of a sandbox's src vs the arm's src — the files touched.
- *  Uses `git diff --no-index` which works outside a repo and prints names. */
+/** Files the agent changed in the sandbox vs the arm's src, as clean relative
+ *  paths (e.g. `features/comments.ts`). Uses a direct tree diff rather than
+ *  `git diff --no-index`, which C-quotes absolute Windows paths into unusable
+ *  `'"C:\\..."'` strings and breaks downstream "outside-target" matching. */
 export function filesTouched(sandboxDir: string, arm: Arm): string[] {
-  try {
-    execFileSync('git', ['diff', '--no-index', '--name-only', join(armDir(arm), 'src'), join(sandboxDir, 'src')], { encoding: 'utf8' });
-    return [];
-  } catch (e: any) {
-    // --no-index exits 1 when differences exist; stdout holds the names.
-    const out: string = e?.stdout ?? '';
-    return out.split('\n').map((s) => s.trim()).filter(Boolean);
-  }
+  return changedFiles(join(armDir(arm), 'src'), join(sandboxDir, 'src'));
 }
 
 /** Recursively list files under `dir`, returned as paths relative to `dir`. */

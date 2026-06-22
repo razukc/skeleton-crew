@@ -21,7 +21,12 @@ export interface RunAgentOptions {
  * so one failed build can't abort the whole experiment.
  */
 export function runAgent(opts: RunAgentOptions): Promise<AgentRunResult> {
-  const command = opts.command ?? 'claude';
+  // Default to the actual Claude Code binary this session runs on
+  // (CLAUDE_CODE_EXECPATH) before a bare 'claude' on PATH: in a wrapped setup
+  // (e.g. the bonsai gateway) the PATH 'claude' can resolve to a DIFFERENT,
+  // non-wrapped build the gateway rejects as "outdated". The exec-path env var
+  // points at the binary that is already authenticated for this session.
+  const command = opts.command ?? process.env.CLAUDE_CODE_EXECPATH ?? 'claude';
   const args = [
     ...(opts.baseArgs ?? ['--print', '--output-format', 'stream-json', '--verbose']),
     ...(opts.extraArgs ?? []),
