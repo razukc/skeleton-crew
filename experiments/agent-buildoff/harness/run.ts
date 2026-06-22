@@ -1,11 +1,13 @@
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { renderResults, type ExperimentResults } from './report.js';
 import { collidingRegistrationOutcome, throwingHotspotContained } from './faults.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, '..');
+// Anchor on the package root: `npm run experiment` runs `node dist/harness/run.js`,
+// so the compiled file lives in dist/ — a `..`-relative ROOT would write RESULTS.md
+// into dist/ (wiped by the next build). process.cwd() is the package root under npm.
+const ROOT = process.cwd();
 
 /**
  * Live experiment entry. Phases 1–3 invoke the real `claude` CLI and are

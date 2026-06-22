@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { runAgent } from './agent-invoke.js';
 import { createSandbox, type Sandbox } from './sandbox.js';
@@ -8,8 +7,13 @@ import { runOracles, summarize } from './oracle-runner.js';
 import { ALL_ORACLES } from './oracles/index.js';
 import type { Arm, FeatureRunMetrics } from './types.js';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, '..'); // experiments/agent-buildoff
+// Anchor on the package root, NOT the compiled file's location. `npm run
+// experiment` runs `node dist/harness/run.js`, so dirname(import.meta.url) is
+// `dist/harness/` — a `..`-relative ROOT would land in `dist/` (wiped by tsc),
+// where builder-prompt.md is absent and the arms are compiled .js, not the .ts
+// the agent must edit. process.cwd() is the package root under every npm script.
+// (Same anchoring fix the sibling hotswap-stress harness needed.)
+const ROOT = process.cwd(); // experiments/agent-buildoff
 
 /** Land the first repeat whose own feature oracles passed; null if none did. */
 export function chooseLanding(runs: FeatureRunMetrics[]): FeatureRunMetrics | null {
@@ -61,17 +65,41 @@ export async function measureRun(opts: {
   feature: string; arm: Arm; repeat: number; specPath: string;
   bootArm: (srcDir: string) => Promise<{ baseUrl: string; close: () => Promise<void> }>;
   claudeCommand?: string; claudeBaseArgs?: string[]; claudeExtraArgs?: string[];
-}): Promise<{ metrics: FeatureRunMetrics; sandbox: Sandbox }> {
-  const sandbox = createSandbox(armDir(opts.arm), join(ROOT, '.sandboxes', `${opts.arm}-${opts.feature}-${opts.repeat}`));
-  const agent = await runAgent({
-    prompt: buildPrompt(opts.specPath, opts.arm),
-    cwd: sandbox.dir,
-    command: opts.claudeCommand,
-    baseArgs: opts.claudeBaseArgs,
-    extraArgs: opts.claudeExtraArgs ?? ['--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Grep,Glob,Edit,Write,Bash'],
-  });
-
-  const touched = filesTouched(sandbox.dir, opts.arm);
+}): Promise<{ metrics: FeatureRunMetrics; sandbox: Sandbox | null }> {
+  // Honor the "never throws" contract for the WHOLE run: a missing spec file,
+  // a failed sandbox copy, or a rejected agent invocation must record a failed
+  // cell — never abort the surrounding K-repeat batch (one throw mid-run would
+  // waste every token spent so far on the live experiment).
+  let sandbox: Sandbox | null = null;
+  let agent: FeatureRunMetrics['agent'];
+  let touched: string[] = [];
+  try {
+    sandbox = createSandbox(armDir(opts.arm), join(ROOT, '.sandboxes', `${opts.arm}-${opts.feature}-${opts.repeat}`));
+    agent = await runAgent({
+      prompt: buildPrompt(opts.specPath, opts.arm),
+      cwd: sandbox.dir,
+      command: opts.claudeCommand,
+      baseArgs: opts.claudeBaseArgs,
+      extraArgs: opts.claudeExtraArgs ?? ['--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Grep,Glob,Edit,Write,Bash'],
+    });
+    touched = filesTouched(sandbox.dir, opts.arm);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    const failedAgent: FeatureRunMetrics['agent'] = {
+      ok: false, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+      costUsd: 0, numTurns: 0, filesRead: [], readToolCalls: 0, sessionId: '',
+    };
+    const oracleResults: FeatureRunMetrics['oracleResults'] = [{ feature: opts.feature, name: 'setup', pass: false, detail }];
+    const s = summarize(oracleResults, opts.feature);
+    return {
+      metrics: {
+        feature: opts.feature, arm: opts.arm, repeat: opts.repeat, agent: failedAgent,
+        filesTouched: [], oracleResults,
+        featureOraclePass: s.featureOraclePass, foreignBreakage: s.foreignBreakage,
+      },
+      sandbox,
+    };
+  }
 
   let oracleResults: FeatureRunMetrics['oracleResults'] = [];
   try {
