@@ -22,10 +22,16 @@ export const baselineOracles: Oracle[] = [
     },
   },
   {
-    feature: 'activity', name: 'feed is an array',
+    feature: 'activity', name: 'feed is a non-empty array recording activity',
     run: async (base) => {
+      // A bare Array.isArray check is vacuous: it passes on an empty feed, so a
+      // regression that silently stops activity recording — on the experiment's
+      // central hotspot feature — would register a FALSE PASS. Assert the feed
+      // actually accumulates a known kind. We post a task first so this oracle
+      // is self-contained (green standalone, not only in full-suite order).
+      await fetch(`${base}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'A' }) });
       const feed = await j(await fetch(`${base}/activity`));
-      return ok(Array.isArray(feed), 'activity is array');
+      return ok(Array.isArray(feed) && feed.some((e: any) => e.kind === 'task.created'), 'activity feed records task.created');
     },
   },
 ];
