@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync, statSync, existsSync, cpSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { runAgent } from './agent-invoke.js';
 import { createSandbox, type Sandbox } from './sandbox.js';
 import { runOracles, summarize } from './oracle-runner.js';
@@ -54,6 +55,104 @@ export function filesTouched(sandboxDir: string, arm: Arm): string[] {
     const out: string = e?.stdout ?? '';
     return out.split('\n').map((s) => s.trim()).filter(Boolean);
   }
+}
+
+/** Recursively list files under `dir`, returned as paths relative to `dir`. */
+function listFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  const walk = (d: string): void => {
+    for (const name of readdirSync(d)) {
+      const full = join(d, name);
+      if (statSync(full).isDirectory()) walk(full);
+      else out.push(relative(dir, full).split('\\').join('/'));
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+/** Files that differ (content or presence) between two src trees, as relative
+ *  paths. Used to detect whether two parallel builds collided on the same file. */
+export function changedFiles(baseSrc: string, otherSrc: string): string[] {
+  const names = new Set([...listFiles(baseSrc), ...listFiles(otherSrc)]);
+  const changed: string[] = [];
+  for (const n of names) {
+    const a = join(baseSrc, n);
+    const b = join(otherSrc, n);
+    const aEx = existsSync(a);
+    const bEx = existsSync(b);
+    if (aEx !== bEx) { changed.push(n); continue; }
+    if (aEx && bEx && readFileSync(a, 'utf8') !== readFileSync(b, 'utf8')) changed.push(n);
+  }
+  return changed.sort();
+}
+
+export interface ParallelOutcome {
+  arm: Arm;
+  changedA: string[];
+  changedB: string[];
+  overlap: string[];          // files BOTH builds edited — the contention surface
+  preExistingOverlap: string[]; // overlap files that already existed at base (a real clobber risk)
+  observation: ParallelObservation;
+}
+
+/**
+ * Phase 3: build parallel-a and parallel-b independently off the SAME landed
+ * arm (neither sees the other), then judge the contention structurally.
+ *
+ * The bet, made concrete: a *silent* clobber happens when both features had to
+ * edit the SAME pre-existing source file (overlaying one loses the other's edits
+ * with no error). A *loud-and-local* outcome happens when they land on separate
+ * registered seams (disjoint files = clean compose) or a registration collision
+ * throws an attributable error. We do NOT have frozen oracles for the parallel
+ * features, so the signal is the file-collision surface plus any boot/registration
+ * error — exactly the architectural property SCR forces, observed honestly.
+ */
+export async function parallelObserve(opts: {
+  arm: Arm; specPathA: string; specPathB: string;
+  bootArm: (srcDir: string) => Promise<{ baseUrl: string; close: () => Promise<void> }>;
+  claudeCommand?: string; claudeBaseArgs?: string[]; claudeExtraArgs?: string[];
+}): Promise<ParallelOutcome> {
+  const baseSrc = join(armDir(opts.arm), 'src');
+  const common = { arm: opts.arm, bootArm: opts.bootArm, claudeCommand: opts.claudeCommand, claudeBaseArgs: opts.claudeBaseArgs, claudeExtraArgs: opts.claudeExtraArgs };
+
+  const a = await measureRun({ ...common, feature: 'parallel-a', repeat: 0, specPath: opts.specPathA });
+  const b = await measureRun({ ...common, feature: 'parallel-b', repeat: 0, specPath: opts.specPathB });
+
+  const srcA = a.sandbox ? join(a.sandbox.dir, 'src') : baseSrc;
+  const srcB = b.sandbox ? join(b.sandbox.dir, 'src') : baseSrc;
+  const changedA = changedFiles(baseSrc, srcA);
+  const changedB = changedFiles(baseSrc, srcB);
+  const overlap = changedA.filter((f) => changedB.includes(f));
+  const baseFiles = new Set(listFiles(baseSrc));
+  const preExistingOverlap = overlap.filter((f) => baseFiles.has(f));
+
+  // Attempt to compose: copy A's changed files then B's changed files onto a
+  // fresh copy of the base, build + boot, capture any attributable error.
+  let errorName = '';
+  const composed = createSandbox(armDir(opts.arm), join(ROOT, '.sandboxes', `${opts.arm}-parallel-composed`));
+  try {
+    for (const f of changedA) cpSync(join(srcA, f), join(composed.dir, 'src', f));
+    for (const f of changedB) cpSync(join(srcB, f), join(composed.dir, 'src', f));
+    const server = await opts.bootArm(join(composed.dir, 'src'));
+    await server.close();
+  } catch (err) {
+    errorName = err instanceof Error ? err.name : 'BootError';
+    if (/duplicate/i.test(err instanceof Error ? err.message : '')) errorName = 'DuplicateRegistrationError';
+  } finally {
+    composed.cleanup();
+    a.sandbox?.cleanup();
+    b.sandbox?.cleanup();
+  }
+
+  // behaviorLost: both rewrote a shared pre-existing file and nothing threw —
+  // the later overlay silently won, the earlier feature's edits are gone.
+  const behaviorLost = preExistingOverlap.length > 0 && !errorName;
+  return {
+    arm: opts.arm, changedA, changedB, overlap, preExistingOverlap,
+    observation: { bothApplied: !errorName, errorName, behaviorLost },
+  };
 }
 
 /**
@@ -117,4 +216,38 @@ export async function measureRun(opts: {
     featureOraclePass: s.featureOraclePass, foreignBreakage: s.foreignBreakage,
   };
   return { metrics, sandbox };
+}
+
+/**
+ * Compile a sandbox's src with the arm's tsconfig and dynamic-import the built
+ * server, returning a listening base URL + close fn. Throws if the agent's code
+ * does not compile (the caller records that as a failed run). The cache-busting
+ * `?t=` query forces a fresh module each boot so a re-landed arm isn't stale.
+ *
+ * Note: imports build a proper file URL via pathToFileURL — a bare
+ * `file://${winPath}` is malformed on Windows (drive-letter + backslashes).
+ */
+export async function bootSandboxArm(arm: Arm, sandboxSrcDir: string): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  const sandboxRoot = dirname(sandboxSrcDir);
+  const distDir = join(sandboxRoot, 'dist');
+  const tsc = spawnSync('npx', ['tsc', '-p', join(sandboxRoot, 'tsconfig.json')], { encoding: 'utf8', shell: true });
+  if (tsc.status !== 0) throw new Error(`sandbox tsc failed: ${tsc.stdout}\n${tsc.stderr}`);
+
+  // performance.now() (not Date.now) — monotonic, unique per call, cache-busts import.
+  const bust = `?t=${globalThis.performance.now()}`;
+  if (arm === 'mono') {
+    const serverUrl = pathToFileURL(join(distDir, 'server.js')).href + bust;
+    const storeUrl = pathToFileURL(join(distDir, 'store.js')).href + bust;
+    const mod = await import(serverUrl);
+    const store = await import(storeUrl);
+    store.resetStore?.();
+    const app = mod.buildMonoServer();
+    const baseUrl = await app.listen({ port: 0, host: '127.0.0.1' });
+    return { baseUrl, close: () => app.close() };
+  }
+  const hostUrl = pathToFileURL(join(distDir, 'host.js')).href + bust;
+  const mod = await import(hostUrl);
+  const { app, runtime } = await mod.buildScrServer();
+  const baseUrl = await app.listen({ port: 0, host: '127.0.0.1' });
+  return { baseUrl, close: async () => { await app.close(); await runtime.shutdown(); } };
 }
