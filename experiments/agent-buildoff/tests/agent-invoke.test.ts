@@ -45,4 +45,15 @@ describe('runAgent (parses headless claude stream-json)', () => {
     expect(res.ok).toBe(true);
     expect(res.inputTokens).toBe(1000);
   });
+
+  it('kills a hung build on timeout and returns ok=false', async () => {
+    const t0 = Date.now();
+    const res = await runAgent({
+      prompt: 'x', cwd: here, command: process.execPath, baseArgs: [fakeCli, 'hang'],
+      timeoutMs: 400,
+    });
+    const elapsed = Date.now() - t0;
+    expect(res.ok).toBe(false);            // never saw a result envelope
+    expect(elapsed).toBeLessThan(4000);    // resolved promptly via the timeout, not the 60s hang
+  });
 });

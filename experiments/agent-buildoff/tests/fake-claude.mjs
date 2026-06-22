@@ -7,6 +7,14 @@ const scenario = process.argv[2] ?? 'happy';
 process.stdin.resume();
 process.stdin.on('data', () => {});
 
+// "hang": emit a partial stream then never exit — models a builder that writes
+// files then wedges (the failure that blocked the first live run). The parent's
+// timeoutMs must kill it. Keep the event loop alive with a long timer.
+if (scenario === 'hang') {
+  process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'a.ts' } }] } }) + '\n');
+  setTimeout(() => {}, 60_000);
+}
+
 function line(obj) { process.stdout.write(JSON.stringify(obj) + '\n'); }
 
 function toolUse(name, input) {

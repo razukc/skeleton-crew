@@ -77,9 +77,24 @@ async function buildFeatureInArm(
   };
 }
 
-async function runSequential(): Promise<{ perFeature: PerFeatureRow[]; crossover: number; landedByArm: Record<Arm, Set<string>> }> {
+function rowFor(feature: string, s: ArmFeatureResult, m: ArmFeatureResult): PerFeatureRow {
+  return {
+    feature,
+    scrTokensMedian: Math.round(median(s.tokens)),
+    monoTokensMedian: Math.round(median(m.tokens)),
+    scrSurface: Math.round(median(s.surface)),
+    monoSurface: Math.round(median(m.surface)),
+    scrForeignBreak: Math.max(...s.foreign, 0),
+    monoForeignBreak: Math.max(...m.foreign, 0),
+  };
+}
+
+async function runSequential(
+  checkpoint: (rows: PerFeatureRow[], crossover: number) => void,
+): Promise<{ perFeature: PerFeatureRow[]; crossover: number; landedByArm: Record<Arm, Set<string>> }> {
   const perArm: Record<Arm, Map<string, ArmFeatureResult>> = { scr: new Map(), mono: new Map() };
   const builtByArm: Record<Arm, Set<string>> = { scr: new Set(['members', 'tasks', 'activity']), mono: new Set(['members', 'tasks', 'activity']) };
+  const perFeature: PerFeatureRow[] = [];
 
   for (const { feature, spec } of BACKLOG) {
     for (const arm of ARMS) {
@@ -88,21 +103,12 @@ async function runSequential(): Promise<{ perFeature: PerFeatureRow[]; crossover
       perArm[arm].set(feature, res);
       if (res.landed) builtByArm[arm].add(feature);
     }
+    // Both arms done for this feature — append its row and checkpoint to disk
+    // so a death mid-run preserves every feature already completed.
+    perFeature.push(rowFor(feature, perArm.scr.get(feature)!, perArm.mono.get(feature)!));
+    const xover = crossoverIndex(perFeature.map((f) => f.scrTokensMedian), perFeature.map((f) => f.monoTokensMedian));
+    checkpoint(perFeature, xover);
   }
-
-  const perFeature: PerFeatureRow[] = BACKLOG.map(({ feature }) => {
-    const s = perArm.scr.get(feature)!;
-    const m = perArm.mono.get(feature)!;
-    return {
-      feature,
-      scrTokensMedian: Math.round(median(s.tokens)),
-      monoTokensMedian: Math.round(median(m.tokens)),
-      scrSurface: Math.round(median(s.surface)),
-      monoSurface: Math.round(median(m.surface)),
-      scrForeignBreak: Math.max(...s.foreign, 0),
-      monoForeignBreak: Math.max(...m.foreign, 0),
-    };
-  });
 
   const crossover = crossoverIndex(
     perFeature.map((f) => f.scrTokensMedian),
@@ -211,28 +217,38 @@ export async function main(argv: string[]): Promise<number> {
     predictions: [],
   };
 
+  const out = join(ROOT, 'RESULTS.md');
+  const writeResults = (): void => {
+    results.predictions = scorePredictions(results);
+    writeFileSync(out, renderResults(results), 'utf8');
+  };
+
   if (live) {
     console.log('Phase 1 — sequential build-off (live, token-expensive)…');
-    const seq = await runSequential();
+    // Checkpoint after every feature: persist partial results so a crash or
+    // hang loses at most the in-flight feature, not the whole run.
+    const seq = await runSequential((rows, xover) => {
+      results.perFeature = rows;
+      results.crossoverIndex = xover;
+      writeResults();
+      console.log(`  ✓ checkpoint: ${rows.length}/${BACKLOG.length} features, crossover=${xover}`);
+    });
     results.perFeature = seq.perFeature;
     results.crossoverIndex = seq.crossover;
 
     console.log('Phase 2 — modification blast radius…');
     results.modification = await runModification(seq.landedByArm);
+    writeResults();
 
     console.log('Phase 3 — parallel contention…');
     results.parallel = await runParallel();
-
-    results.predictions = scorePredictions(results);
+    writeResults();
   } else {
     // Smoke mode: still score predictions (Phase 4 + empty phases) so the
     // scorecard renders without spending tokens.
-    results.predictions = scorePredictions(results);
   }
 
-  const md = renderResults(results);
-  const out = join(ROOT, 'RESULTS.md');
-  writeFileSync(out, md, 'utf8');
+  writeResults();
   console.log(`Wrote ${out}`);
   return 0;
 }

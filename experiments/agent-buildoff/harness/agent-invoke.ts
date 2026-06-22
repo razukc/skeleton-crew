@@ -12,6 +12,13 @@ export interface RunAgentOptions {
   baseArgs?: string[];
   /** Extra claude flags (model, allowedTools, max-budget). Ignored by the fake. */
   extraArgs?: string[];
+  /** Hard wall-clock cap (ms). On expiry the child tree is killed and the run
+   *  resolves ok=false. 0/undefined = no timeout. Essential for an unattended
+   *  batch: one hung build must not block the whole experiment. */
+  timeoutMs?: number;
+  /** Environment for the child. Defaults to process.env. Pass a scrubbed env to
+   *  stop a builder from inheriting the parent session's hooks/MCP servers. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -33,7 +40,7 @@ export function runAgent(opts: RunAgentOptions): Promise<AgentRunResult> {
   ];
 
   return new Promise((resolve) => {
-    const proc = spawn(command, args, { cwd: opts.cwd });
+    const proc = spawn(command, args, { cwd: opts.cwd, env: opts.env ?? process.env });
     const filesRead = new Set<string>();
     const res: AgentRunResult = {
       ok: false, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0,
@@ -41,6 +48,28 @@ export function runAgent(opts: RunAgentOptions): Promise<AgentRunResult> {
     };
     let buffer = '';
     let sawResult = false;
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      res.filesRead = [...filesRead];
+      resolve(res);
+    };
+
+    // Wall-clock guard: kill the child tree and resolve ok=false on expiry.
+    const timer = opts.timeoutMs && opts.timeoutMs > 0
+      ? setTimeout(() => {
+          if (proc.pid) {
+            // Tree-kill on Windows (taskkill /T); plain kill elsewhere.
+            try {
+              if (process.platform === 'win32') spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F']);
+              else proc.kill('SIGKILL');
+            } catch { /* best-effort */ }
+          }
+          finish(); // ok stays false; sawResult false → recorded as a failed build
+        }, opts.timeoutMs)
+      : null;
 
     const handleLine = (line: string): void => {
       if (!line.trim()) return;
@@ -77,12 +106,11 @@ export function runAgent(opts: RunAgentOptions): Promise<AgentRunResult> {
       for (const l of lines) handleLine(l);
     });
     proc.stderr.on('data', () => { /* CLI diagnostics; ignored */ });
-    proc.on('error', () => resolve(res)); // spawn failed (e.g. claude not found)
+    proc.on('error', () => finish()); // spawn failed (e.g. claude not found)
     proc.on('close', (code) => {
       if (buffer) handleLine(buffer);
-      res.filesRead = [...filesRead];
       res.ok = code === 0 && sawResult;
-      resolve(res);
+      finish();
     });
 
     proc.stdin.on('error', () => { /* child exited before prompt flush */ });

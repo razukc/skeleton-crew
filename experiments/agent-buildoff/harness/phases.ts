@@ -32,6 +32,32 @@ export function classifyParallel(o: ParallelObservation): { cls: 'silent' | 'lou
 
 const armDir = (arm: Arm): string => join(ROOT, arm === 'scr' ? 'scr-app' : 'mono-app');
 
+/** Default per-build wall-clock cap. The single-build probe took ~3.4 min; 10
+ *  min leaves generous headroom while guaranteeing a hung build can't block the
+ *  ~54-build batch indefinitely (the failure mode that lost the first run). */
+export const DEFAULT_BUILD_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * A scrubbed environment for builder agents. The parent session injects a
+ * SessionStart superpowers hook and MCP servers via CLAUDE_CODE / settings env
+ * vars; a spawned builder that inherits them drags in unrelated machinery
+ * (proven to spawn context7/runtime MCP servers and likely contributed to the
+ * first run's hang) and pollutes the builder's instructions. Strip the
+ * session-scoped vars but keep PATH, auth, and the gateway base URL so the
+ * headless call still authenticates.
+ */
+export function builderEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const k of Object.keys(env)) {
+    if (/^CLAUDE_CODE_|^CLAUDECODE$|^CLAUDE_EFFORT$|^AI_AGENT$|^CLAUDE_CODE_SESSION_ID$/.test(k)) {
+      // Keep CLAUDE_CODE_EXECPATH (we need the binary) and the git-bash path.
+      if (k === 'CLAUDE_CODE_EXECPATH' || k === 'CLAUDE_CODE_GIT_BASH_PATH') continue;
+      delete env[k];
+    }
+  }
+  return env;
+}
+
 const ARM_CONVENTION: Record<Arm, string> = {
   scr: 'Features are SCR plugins. Add a plugin file under `src/plugins/`, register it in `src/host.ts`, and add Fastify route shim(s) in `src/host.ts` that call `runtime.runAction`. Reach other features only via `ctx.services`, `ctx.actions.runAction`, and `ctx.events`. Record activity by calling the `activity:record` action; react via the `activity:recorded` event.',
   mono: 'Features are Fastify route modules. Add a `src/features/<name>.ts` exporting `register<Name>(app)` and wire it in `src/server.ts`. Share state via `src/store.ts`. Record activity by calling `recordActivity(kind, data)` from `src/store.ts`.',
@@ -159,6 +185,7 @@ export async function measureRun(opts: {
   feature: string; arm: Arm; repeat: number; specPath: string;
   bootArm: (srcDir: string) => Promise<{ baseUrl: string; close: () => Promise<void> }>;
   claudeCommand?: string; claudeBaseArgs?: string[]; claudeExtraArgs?: string[];
+  timeoutMs?: number;
 }): Promise<{ metrics: FeatureRunMetrics; sandbox: Sandbox | null }> {
   // Honor the "never throws" contract for the WHOLE run: a missing spec file,
   // a failed sandbox copy, or a rejected agent invocation must record a failed
@@ -175,6 +202,8 @@ export async function measureRun(opts: {
       command: opts.claudeCommand,
       baseArgs: opts.claudeBaseArgs,
       extraArgs: opts.claudeExtraArgs ?? ['--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Grep,Glob,Edit,Write,Bash'],
+      timeoutMs: opts.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS,
+      env: builderEnv(),
     });
     touched = filesTouched(sandbox.dir, opts.arm);
   } catch (err) {
