@@ -1,0 +1,25 @@
+{
+  "name": "hotswap-stress",
+  "version": "1.0.0",
+  "description": "Adversarial hot-swap stress harness for skeleton-crew",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "stress": "npm run build && node dist/harness/run.js",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "skeleton-crew": "file:../..",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "autocannon": "^8.0.0",
+    "@types/autocannon": "^7.12.0",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.15"
+  }
+}

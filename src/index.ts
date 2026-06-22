@@ -32,6 +32,7 @@ export {
   PluginSwapError,
   ConsoleLogger,
   RuntimeState,
+  type Logger,
   type PluginDefinition,
   type ScreenDefinition,
   type ActionDefinition,
