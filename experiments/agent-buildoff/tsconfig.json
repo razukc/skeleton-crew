@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "noEmit": false,
+    "types": ["node"]
+  },
+  "include": ["mono-app/src/**/*", "scr-app/src/**/*", "harness/**/*"],
+  "exclude": ["tests", "dist", ".sandboxes"]
+}

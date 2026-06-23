@@ -1,0 +1,5 @@
+node_modules/
+dist/
+RESULTS.md
+.sandboxes/
+package-lock.json
