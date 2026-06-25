@@ -45,6 +45,30 @@ describe('validateSchemaDocument — closed vocabulary', () => {
     expect(validateSchemaDocument(s).ok).toBe(false);
   });
 
+  it('rejects "required" without type "object"', () => {
+    expect(validateSchemaDocument({ required: ['x'] }).ok).toBe(false);
+  });
+
+  it('rejects "properties" without type "object"', () => {
+    expect(validateSchemaDocument({ properties: { a: { type: 'string' } } }).ok).toBe(false);
+  });
+
+  it('rejects "items" without type "array"', () => {
+    expect(validateSchemaDocument({ items: { type: 'string' } }).ok).toBe(false);
+  });
+
+  it('accepts "required" with type "object"', () => {
+    expect(validateSchemaDocument({ type: 'object', required: ['x'] }).ok).toBe(true);
+  });
+
+  it('accepts "properties" with type "object"', () => {
+    expect(validateSchemaDocument({ type: 'object', properties: { a: { type: 'string' } } }).ok).toBe(true);
+  });
+
+  it('accepts "items" with type "array"', () => {
+    expect(validateSchemaDocument({ type: 'array', items: { type: 'string' } }).ok).toBe(true);
+  });
+
   it('exposes the supported sets as the single source of truth', () => {
     expect(SUPPORTED_KEYWORDS).toContain('enum');
     expect(SUPPORTED_KEYWORDS).not.toContain('pattern');

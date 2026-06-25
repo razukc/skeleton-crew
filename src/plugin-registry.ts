@@ -1,6 +1,7 @@
 import semver from 'semver';
 import { PluginDefinition, RuntimeContext, Logger, ValidationError, DuplicateRegistrationError, ActionDefinition, ScreenDefinition } from './types.js';
 import { SwapBuffer } from './swap-buffer.js';
+import { validateSchemaDocument } from './contract-validator.js';
 import type { ActionEngine } from './action-engine.js';
 import type { ScreenRegistry } from './screen-registry.js';
 import type { ServiceRegistry } from './service-registry.js';
@@ -437,6 +438,19 @@ export class PluginRegistry<TConfig = Record<string, unknown>> {
           }
           // Live duplicate from the SAME plugin doesn't block: v2 is replacing
           // v1's action by design.
+          // Schema gate (C1): validate declared schemas HERE, in the buffered
+          // phase, so a malformed schema throws during newPlugin.setup() — which
+          // is wrapped in try/catch that drops the buffer and leaves v1 fully
+          // untouched. Mirrors ActionEngine.assertSchemaEnforceable exactly
+          // (same validateSchemaDocument, same ValidationError). Validating
+          // later, mid-commit, would tear a half-swapped registry.
+          for (const field of ['input', 'output'] as const) {
+            const schema = action[field];
+            if (schema === null || schema === undefined) continue;
+            if (!validateSchemaDocument(schema).ok) {
+              throw new ValidationError('Action', field, action.id);
+            }
+          }
           buffer.actions.set(action.id, {
             def: action as unknown as ActionDefinition<unknown, unknown, TConfig>,
             explicitlyRemoved: false,

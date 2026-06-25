@@ -57,6 +57,20 @@ export function validateSchemaDocument(
   if ('type' in s && !TYPE_SET.has(s.type as string)) {
     return { ok: false, reason: `unsupported type "${String(s.type)}"` };
   }
+  // Accept only what the enforcer (walk) enforces: `required`/`properties` are
+  // honored ONLY under type:'object' and `items` ONLY under type:'array'.
+  // Without the enabling type these keywords register but enforce nothing — a
+  // lying contract. Reject them here. Scalar constraints (minLength/maximum/
+  // enum/nullable) key off the VALUE's type and are fine without `type`.
+  if ('required' in s && s.type !== 'object') {
+    return { ok: false, reason: '"required" requires type "object"' };
+  }
+  if ('properties' in s && s.type !== 'object') {
+    return { ok: false, reason: '"properties" requires type "object"' };
+  }
+  if ('items' in s && s.type !== 'array') {
+    return { ok: false, reason: '"items" requires type "array"' };
+  }
   if (s.properties && typeof s.properties === 'object') {
     for (const sub of Object.values(s.properties as Record<string, unknown>)) {
       const r = validateSchemaDocument(sub, depth + 1, seen);
