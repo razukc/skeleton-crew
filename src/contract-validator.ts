@@ -12,6 +12,9 @@ export const SUPPORTED_KEYWORDS = [
   'minLength', 'maxLength', 'minimum', 'maximum',
 ] as const;
 
+/** Version of the introspection contract shape (the map's own contract). */
+export const CONTRACT_SCHEMA_VERSION = '1';
+
 /** Bound on schema nesting — rejects pathological/recursive documents (DoS). */
 export const SCHEMA_MAX_DEPTH = 32;
 

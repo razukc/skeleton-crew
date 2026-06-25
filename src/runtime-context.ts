@@ -6,6 +6,7 @@ import type { EventBus } from './event-bus.js';
 import type { Runtime } from './runtime.js';
 import type { ServiceRegistry } from './service-registry.js';
 import { ExecutionRecorderImpl } from './execution-recorder.js';
+import { SUPPORTED_KEYWORDS, CONTRACT_SCHEMA_VERSION } from './contract-validator.js';
 
 /**
  * Deep freeze utility - recursively freezes an object and all nested objects.
@@ -418,7 +419,16 @@ export class RuntimeContextImpl<TConfig = Record<string, unknown>> implements Ru
 
         // Deep freeze the metadata
         return deepFreeze(metadata);
-      }
+      },
+
+      /**
+       * Get the contract vocabulary: schema version and supported keywords
+       * Requirements: 6.6
+       */
+      getContractVocabulary: () => ({
+        schemaVersion: CONTRACT_SCHEMA_VERSION,
+        supportedKeywords: [...SUPPORTED_KEYWORDS],
+      })
     };
   }
 }

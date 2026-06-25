@@ -259,3 +259,50 @@ describe('Introspection API', () => {
     });
   });
 });
+
+import type { ActionDefinition } from '../../src/types.js';
+import { SUPPORTED_KEYWORDS } from '../../src/contract-validator.js';
+
+// Local helper: build a runtime with a single action registered via a plugin,
+// initialize it, and return its context. Self-contained (does not depend on
+// other helpers in this file).
+async function buildRuntimeWithAction(
+  def: ActionDefinition<any, any>,
+): Promise<{ ctx: RuntimeContext; rt: Runtime }> {
+  const rt = new Runtime({ logger: { debug() {}, info() {}, warn() {}, error() {} } });
+  rt.registerPlugin({
+    name: 'h', version: '1.0.0',
+    setup(ctx) { ctx.actions.registerAction(def); },
+  });
+  await rt.initialize();
+  return { ctx: rt.getContext(), rt };
+}
+
+describe('introspect contracts', () => {
+  it('serves the declared input schema, its state, and the vocabulary', async () => {
+    const { ctx, rt } = await buildRuntimeWithAction({
+      id: 'tasks:create',
+      handler: (p: any) => p,
+      input: { type: 'object', required: ['title'], properties: { title: { type: 'string' } } },
+      output: null,
+    });
+
+    const md = ctx.introspect.getActionDefinition('tasks:create')!;
+    expect(md.inputState).toBe('declared');
+    expect(md.outputState).toBe('none');
+    expect(md.input).toMatchObject({ type: 'object', required: ['title'] });
+
+    const vocab = ctx.introspect.getContractVocabulary();
+    expect(vocab.schemaVersion).toBe('1');
+    expect(vocab.supportedKeywords).toEqual([...SUPPORTED_KEYWORDS]);
+    await rt.shutdown();
+  });
+
+  it('marks an undeclared action correctly', async () => {
+    const { ctx, rt } = await buildRuntimeWithAction({ id: 'x:u', handler: () => 1 });
+    const md = ctx.introspect.getActionDefinition('x:u')!;
+    expect(md.inputState).toBe('undeclared');
+    expect(md.outputState).toBe('undeclared');
+    await rt.shutdown();
+  });
+});

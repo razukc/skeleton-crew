@@ -479,4 +479,5 @@ export interface IntrospectionAPI {
   listScreens(): string[];
   getScreenDefinition(id: string): ScreenDefinition | null;
   getMetadata(): IntrospectionMetadata;
+  getContractVocabulary(): { schemaVersion: string; supportedKeywords: string[] };
 }
