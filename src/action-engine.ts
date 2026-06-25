@@ -1,6 +1,6 @@
 import type { ActionDefinition, RuntimeContext, Logger, TraceEntry, TraceStatus } from './types.js';
-import { ValidationError, DuplicateRegistrationError, ActionTimeoutError, ActionExecutionError, ActionMemoryError } from './types.js';
-import { validateSchemaDocument } from './contract-validator.js';
+import { ValidationError, DuplicateRegistrationError, ActionTimeoutError, ActionExecutionError, ActionMemoryError, ContractViolationError } from './types.js';
+import { validateSchemaDocument, validateValue } from './contract-validator.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -193,6 +193,33 @@ export class ActionEngine<TConfig = Record<string, unknown>> {
 
     if (!this.context) {
       throw new Error('RuntimeContext not set in ActionEngine');
+    }
+
+    // Contract: validate input ONCE, before the retry loop. A violation is
+    // deterministic — retrying wastes work and would spam identical traces.
+    if (action.input !== undefined) {
+      let violations;
+      if (action.input === null) {
+        // declared-none: any non-undefined params is a violation
+        violations = params === undefined ? [] :
+          [{ path: '/', expected: 'no input', actual: typeof params, schema: {} as any }];
+      } else {
+        // A bug in OUR validator must surface as its own error, never be
+        // mistaken for a faulty caller (spec §5: validator-internal failure).
+        try {
+          violations = validateValue(action.input, params).violations;
+        } catch (validatorBug) {
+          this.logger.error(`Contract validator failed for "${id}"`, validatorBug as Error);
+          throw new Error(`Contract validator internal error for action "${id}": ${(validatorBug as Error).message}`);
+        }
+      }
+      if (violations.length > 0) {
+        const runId = nextRunId();
+        this.emitTrace({ runId, actionId: id, input: params, output: undefined,
+          status: 'contract', durationMs: 0, startedAt: Date.now(),
+          error: `contract violation (${violations.length})`, attempt: 1 });
+        throw new ContractViolationError(id, violations);
+      }
     }
 
     const maxAttempts = 1 + Math.max(0, action.retry ?? 0);

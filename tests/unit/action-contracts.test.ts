@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { ActionEngine } from '../../src/action-engine.js';
-import type { Logger } from '../../src/types.js';
-import { ValidationError } from '../../src/types.js';
+import type { Logger, RuntimeContext, TraceEntry } from '../../src/types.js';
+import { ValidationError, ContractViolationError } from '../../src/types.js';
 
 function logger(): Logger { return { debug() {}, info() {}, warn() {}, error() {} }; }
+
+function ctx(): RuntimeContext { return {} as unknown as RuntimeContext; }
 
 describe('contract registration guard', () => {
   it('rejects an action whose input schema uses an unsupported keyword', () => {
@@ -26,5 +28,49 @@ describe('contract registration guard', () => {
     expect(() => eng.registerAction({
       id: 'x:e', handler: () => 1, output: { type: 'object', properties: { e: { format: 'email' } } } as any,
     })).toThrow(ValidationError);
+  });
+});
+
+describe('contract input enforcement at runAction', () => {
+  it('rejects bad input with ContractViolationError carrying all violations', async () => {
+    const eng = new ActionEngine(logger());
+    eng.setContext(ctx());
+    eng.registerAction({
+      id: 't:create', handler: (p: any) => p,
+      input: { type: 'object', required: ['title'], properties: { priority: { enum: [1, 2, 3] } } },
+    });
+    await expect(eng.runAction('t:create', { priority: 9 })).rejects.toBeInstanceOf(ContractViolationError);
+    try { await eng.runAction('t:create', { priority: 9 }); }
+    catch (e) {
+      const err = e as ContractViolationError;
+      expect(err.violations.map(v => v.path).sort()).toEqual(['/priority', '/title']);
+    }
+  });
+
+  it('validates once — a retryable action does NOT retry a contract violation', async () => {
+    const traces: TraceEntry[] = [];
+    const eng = new ActionEngine(logger(), (t) => traces.push(t));
+    eng.setContext(ctx());
+    eng.registerAction({ id: 't:r', handler: () => 1, retry: 3, input: { type: 'object', required: ['x'] } });
+    await expect(eng.runAction('t:r', {})).rejects.toBeInstanceOf(ContractViolationError);
+    const contractTraces = traces.filter(t => t.status === 'contract');
+    expect(contractTraces).toHaveLength(1);          // not 1 + retry
+  });
+
+  it('declared-none rejects any params but allows undefined', async () => {
+    const eng = new ActionEngine(logger());
+    eng.setContext(ctx());
+    eng.registerAction({ id: 't:n', handler: () => 'ok', input: null });
+    await expect(eng.runAction('t:n', { a: 1 })).rejects.toBeInstanceOf(ContractViolationError);
+    expect(await eng.runAction('t:n')).toBe('ok');
+  });
+
+  it('undeclared input and valid input are unaffected', async () => {
+    const eng = new ActionEngine(logger());
+    eng.setContext(ctx());
+    eng.registerAction({ id: 't:u', handler: (p: any) => p });           // undeclared
+    expect(await eng.runAction('t:u', { anything: true })).toEqual({ anything: true });
+    eng.registerAction({ id: 't:v', handler: (p: any) => p, input: { type: 'object', required: ['x'] } });
+    expect(await eng.runAction('t:v', { x: 1 })).toEqual({ x: 1 });
   });
 });
