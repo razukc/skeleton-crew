@@ -1,5 +1,6 @@
 import type { ActionDefinition, RuntimeContext, Logger, TraceEntry, TraceStatus } from './types.js';
 import { ValidationError, DuplicateRegistrationError, ActionTimeoutError, ActionExecutionError, ActionMemoryError } from './types.js';
+import { validateSchemaDocument } from './contract-validator.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,17 @@ export class ActionEngine<TConfig = Record<string, unknown>> {
     this.context = context;
   }
 
+  /** Reject a declared schema that uses keywords/types the runtime can't
+   *  enforce, or is malformed. `null`/`undefined` schemas are allowed. */
+  private assertSchemaEnforceable(schema: unknown, id: string, field: 'input' | 'output'): void {
+    if (schema === null || schema === undefined) return;
+    const r = validateSchemaDocument(schema);
+    if (!r.ok) {
+      this.logger.error(`Action "${id}" ${field} schema rejected: ${r.badKeyword ? `unsupported keyword "${r.badKeyword}"` : r.reason}`);
+      throw new ValidationError('Action', field, id);
+    }
+  }
+
   /**
    * Registers an action definition.
    * Rejects duplicate action IDs.
@@ -77,6 +89,9 @@ export class ActionEngine<TConfig = Record<string, unknown>> {
     if (!action.handler || typeof action.handler !== 'function') {
       throw new ValidationError('Action', 'handler', action.id);
     }
+
+    this.assertSchemaEnforceable(action.input, action.id, 'input');
+    this.assertSchemaEnforceable(action.output, action.id, 'output');
 
     // Check for duplicate ID (Requirements 6.4, 15.1, 15.2, 15.4, 15.5, 16.2)
     if (this.actions.has(action.id)) {
@@ -126,6 +141,8 @@ export class ActionEngine<TConfig = Record<string, unknown>> {
     if (!action.handler || typeof action.handler !== 'function') {
       throw new ValidationError('Action', 'handler', action.id);
     }
+    this.assertSchemaEnforceable(action.input, action.id, 'input');
+    this.assertSchemaEnforceable(action.output, action.id, 'output');
     this.actions.set(action.id, action);
     this.logger.debug(`Action "${action.id}" replaced atomically`);
   }
