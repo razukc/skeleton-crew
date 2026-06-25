@@ -220,3 +220,17 @@ describe('Finding 9 — config snapshot is stable across a swap', () => {
     await rt.shutdown();
   });
 });
+
+describe('contract honesty across swap', () => {
+  it('rejects swapping in a plugin whose action declares an unsupported schema', async () => {
+    const rt = new Runtime({ logger: { debug() {}, info() {}, warn() {}, error() {} } });
+    rt.registerPlugin({ name: 'p', version: '1.0.0',
+      setup(ctx) { ctx.actions.registerAction({ id: 'p:a', handler: () => 1, input: { type: 'object' } }); } });
+    await rt.initialize();
+    const bad = { name: 'p', version: '2.0.0',
+      setup(ctx: any) { ctx.actions.registerAction({ id: 'p:a', handler: () => 1, input: { type: 'string', pattern: 'x' } }); } };
+    await expect(rt.swapPlugin(bad)).rejects.toBeTruthy();   // buffered setup throws ValidationError → swap aborts, v1 untouched
+    expect(rt.getContext().actions.hasAction('p:a')).toBe(true);
+    await rt.shutdown();
+  });
+});

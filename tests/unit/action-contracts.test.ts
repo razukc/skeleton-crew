@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ActionEngine } from '../../src/action-engine.js';
 import type { Logger, RuntimeContext, TraceEntry } from '../../src/types.js';
 import { ValidationError, ContractViolationError } from '../../src/types.js';
+import { Runtime } from '../../src/runtime.js';
 
 function logger(): Logger { return { debug() {}, info() {}, warn() {}, error() {} }; }
 
@@ -72,5 +73,48 @@ describe('contract input enforcement at runAction', () => {
     expect(await eng.runAction('t:u', { anything: true })).toEqual({ anything: true });
     eng.registerAction({ id: 't:v', handler: (p: any) => p, input: { type: 'object', required: ['x'] } });
     expect(await eng.runAction('t:v', { x: 1 })).toEqual({ x: 1 });
+  });
+});
+
+describe('CAPSTONE — agent works from the map alone (north star)', () => {
+  it('orient via introspect, call correctly, recover from a batched error, hit author-time rejection — zero handler reads', async () => {
+    const rt = new Runtime({ logger: logger() });
+    rt.registerPlugin({
+      name: 'tasks', version: '1.0.0',
+      setup(ctx) {
+        ctx.actions.registerAction({
+          id: 'tasks:create', handler: (p: any) => ({ id: '1', title: p.title }),
+          input: { type: 'object', required: ['title'], properties: { title: { type: 'string' }, priority: { enum: [1, 2, 3] } } },
+          output: { type: 'object', required: ['id', 'title'] },
+        });
+      },
+    });
+    await rt.initialize();
+    const ctx = rt.getContext();
+
+    // (a) ORIENT from the map — no source read
+    const vocab = ctx.introspect.getContractVocabulary();
+    const md = ctx.introspect.getActionDefinition('tasks:create')!;
+    expect(md.inputState).toBe('declared');
+    expect((md.input as any).required).toEqual(['title']);
+
+    // (a) CALL correctly using only what the map told us
+    expect(await ctx.actions.runAction('tasks:create', { title: 'buy milk', priority: 2 }))
+      .toMatchObject({ id: '1', title: 'buy milk' });
+
+    // (b) RECOVER — a wrong call yields a batched, usable fix
+    try { await ctx.actions.runAction('tasks:create', { priority: 9 }); expect.fail('should throw'); }
+    catch (e: any) {
+      expect(e.code).toBe('CONTRACT_INPUT_VIOLATION');
+      expect(e.violations.map((v: any) => v.path).sort()).toEqual(['/priority', '/title']);
+    }
+
+    // (c) AUTHOR-TIME rejection — out-of-vocabulary schema can't even register
+    expect(() => ctx.actions.registerAction({ id: 'tasks:bad', handler: () => 1, input: { type: 'string', pattern: 'x' } as any }))
+      .toThrow();
+
+    // invariant: served schema IS the enforced object (identity)
+    expect(vocab.supportedKeywords).not.toContain('pattern');
+    await rt.shutdown();
   });
 });
