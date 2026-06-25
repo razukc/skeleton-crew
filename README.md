@@ -84,7 +84,7 @@ Its value is **operational**: keeping a system correct and available *while it m
 
 ## Versioning
 
-This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). All release notes — features, fixes, and migration guidance — live in the **[Changelog](CHANGELOG.md)**.
+This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). All release notes — features, fixes, and migration guidance — live in the **[Changelog](CHANGELOG.md)**. Maintainers: see **[RELEASING.md](RELEASING.md)** for the publish workflow.
 
 ## License
 
