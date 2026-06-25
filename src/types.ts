@@ -1,5 +1,7 @@
 // Core type definitions will be implemented in task 2
 
+import type { Violation, JsonSchema } from './contract-validator.js';
+
 // Error Classes
 
 /**
@@ -86,6 +88,24 @@ export class PluginSwapError extends Error {
   ) {
     super(`Cannot swap plugin "${pluginName}": ${reason}`);
     this.name = 'PluginSwapError';
+  }
+}
+
+/**
+ * Thrown when an action's input fails its declared contract. Carries the FULL
+ * batched violation set so an agent can fix every problem in one cycle.
+ */
+export class ContractViolationError extends Error {
+  public readonly code = 'CONTRACT_INPUT_VIOLATION' as const;
+  constructor(
+    public actionId: string,
+    public violations: Violation[],
+  ) {
+    super(
+      `Action "${actionId}" input violated its contract:\n` +
+      violations.map((v) => `  ${v.path}: expected ${v.expected}, got ${v.actual}`).join('\n'),
+    );
+    this.name = 'ContractViolationError';
   }
 }
 
@@ -219,6 +239,12 @@ export interface ActionDefinition<P = unknown, R = unknown, TConfig = Record<str
   memoryLimitMb?: number;
   /** Human-readable description for documentation and introspection */
   description?: string;
+  /** JSON-Schema for the action's input. `null` = declared-none (takes no
+   *  input; any params rejected). Absent = undeclared (no enforcement). */
+  input?: JsonSchema | null;
+  /** JSON-Schema for the action's output. Declared+served+swap-checked; NOT
+   *  hot-path validated in v1. */
+  output?: JsonSchema | null;
 }
 
 /**
@@ -382,11 +408,15 @@ export interface ActionMetadata {
   retry?: number;
   memoryLimitMb?: number;
   description?: string;
+  input?: JsonSchema | null;
+  output?: JsonSchema | null;
+  inputState: 'declared' | 'none' | 'undeclared';
+  outputState: 'declared' | 'none' | 'undeclared';
 }
 
 // ─── Execution Recorder (Priority 2) ─────────────────────────────────────────
 
-export type TraceStatus = 'success' | 'error' | 'timeout' | 'memory';
+export type TraceStatus = 'success' | 'error' | 'timeout' | 'memory' | 'contract';
 
 /**
  * Immutable record of a single action execution.

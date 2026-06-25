@@ -4,6 +4,7 @@ import {
   DuplicateRegistrationError,
   ActionTimeoutError,
   ActionExecutionError,
+  ContractViolationError,
 } from '../../src/types.js';
 
 describe('Error Classes', () => {
@@ -267,7 +268,7 @@ describe('Error Classes', () => {
       const duplicateError = new DuplicateRegistrationError('Test', 'id');
       const timeoutError = new ActionTimeoutError('action', 1000);
       const executionError = new ActionExecutionError('action', new Error('cause'));
-      
+
       expect(validationError).toBeInstanceOf(Error);
       expect(duplicateError).toBeInstanceOf(Error);
       expect(timeoutError).toBeInstanceOf(Error);
@@ -279,12 +280,12 @@ describe('Error Classes', () => {
       const duplicateError = new DuplicateRegistrationError('Test', 'id');
       const timeoutError = new ActionTimeoutError('action', 1000);
       const executionError = new ActionExecutionError('action', new Error('cause'));
-      
+
       expect(validationError.name).toBe('ValidationError');
       expect(duplicateError.name).toBe('DuplicateRegistrationError');
       expect(timeoutError.name).toBe('ActionTimeoutError');
       expect(executionError.name).toBe('ActionExecutionError');
-      
+
       // All names should be unique
       const names = [
         validationError.name,
@@ -300,20 +301,37 @@ describe('Error Classes', () => {
       const duplicateError = new DuplicateRegistrationError('Test', 'id');
       const timeoutError = new ActionTimeoutError('action', 1000);
       const executionError = new ActionExecutionError('action', new Error('cause'));
-      
+
       expect(validationError).toBeInstanceOf(ValidationError);
       expect(validationError).not.toBeInstanceOf(DuplicateRegistrationError);
       expect(validationError).not.toBeInstanceOf(ActionTimeoutError);
       expect(validationError).not.toBeInstanceOf(ActionExecutionError);
-      
+
       expect(duplicateError).toBeInstanceOf(DuplicateRegistrationError);
       expect(duplicateError).not.toBeInstanceOf(ValidationError);
-      
+
       expect(timeoutError).toBeInstanceOf(ActionTimeoutError);
       expect(timeoutError).not.toBeInstanceOf(ValidationError);
-      
+
       expect(executionError).toBeInstanceOf(ActionExecutionError);
       expect(executionError).not.toBeInstanceOf(ValidationError);
+    });
+  });
+
+  describe('ContractViolationError', () => {
+    it('carries code, actionId, and batched violations with a loud message', () => {
+      const err = new ContractViolationError('tasks:create', [
+        { path: '/title', expected: 'string', actual: 'undefined', schema: { type: 'string' } },
+        { path: '/priority', expected: 'one of [1,2,3]', actual: '9', schema: { enum: [1, 2, 3] } },
+      ]);
+      expect(err).toBeInstanceOf(Error);
+      expect(err.name).toBe('ContractViolationError');
+      expect(err.code).toBe('CONTRACT_INPUT_VIOLATION');
+      expect(err.actionId).toBe('tasks:create');
+      expect(err.violations).toHaveLength(2);
+      expect(err.message).toContain('tasks:create');
+      expect(err.message).toContain('/title');
+      expect(err.message).toContain('/priority');
     });
   });
 });

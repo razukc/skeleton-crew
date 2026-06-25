@@ -314,13 +314,36 @@ export class RuntimeContextImpl<TConfig = Record<string, unknown>> implements Ru
         const action = this.actionEngine.getAction(id);
         if (!action) return null;
 
+        // Determine state based on presence and value of input/output
+        let inputState: 'declared' | 'none' | 'undeclared';
+        if (action.input === undefined) {
+          inputState = 'undeclared';
+        } else if (action.input === null) {
+          inputState = 'none';
+        } else {
+          inputState = 'declared';
+        }
+
+        let outputState: 'declared' | 'none' | 'undeclared';
+        if (action.output === undefined) {
+          outputState = 'undeclared';
+        } else if (action.output === null) {
+          outputState = 'none';
+        } else {
+          outputState = 'declared';
+        }
+
         // Extract only id, timeout, retry, memoryLimitMb, description (exclude handler function)
         const metadata = {
           id: action.id,
           timeout: action.timeout,
           retry: action.retry,
           memoryLimitMb: action.memoryLimitMb,
-          description: action.description
+          description: action.description,
+          input: action.input,
+          output: action.output,
+          inputState,
+          outputState,
         };
 
         // Deep freeze the metadata
