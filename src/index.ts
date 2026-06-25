@@ -25,6 +25,7 @@ export { ScreenRegistry } from './screen-registry.js';
 // Exclude Runtime from types export to avoid conflict with runtime.js export
 export {
   ValidationError,
+  ContractViolationError,
   DuplicateRegistrationError,
   ActionTimeoutError,
   ActionExecutionError,
@@ -68,3 +69,9 @@ export {
 export type {
   PerformanceMonitor
 } from './performance.js';
+
+export {
+  validateValue, validateSchemaDocument,
+  SUPPORTED_KEYWORDS, SUPPORTED_TYPES, SCHEMA_MAX_DEPTH, CONTRACT_SCHEMA_VERSION,
+} from './contract-validator.js';
+export type { JsonSchema, Violation, ValueCheckResult, SchemaCheckResult } from './contract-validator.js';

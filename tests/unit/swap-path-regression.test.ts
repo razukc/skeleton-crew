@@ -220,3 +220,37 @@ describe('Finding 9 — config snapshot is stable across a swap', () => {
     await rt.shutdown();
   });
 });
+
+describe('contract honesty across swap', () => {
+  it('a rejected malformed-schema swap leaves v1 fully untouched (atomic rollback)', async () => {
+    const rt = new Runtime({ logger: { debug() {}, info() {}, warn() {}, error() {} } });
+    rt.registerPlugin({ name: 'p', version: '1.0.0',
+      setup(ctx) {
+        ctx.actions.registerAction({ id: 'p:keep', handler: () => 'v1' });
+      } });
+    await rt.initialize();
+
+    // v2 registers a NEW clean action and re-registers p:keep with a NEW value
+    // BEFORE the malformed-schema action. If the swap tore the registry, p:new
+    // would leak and p:keep would flip to 'v2'.
+    const bad = { name: 'p', version: '2.0.0',
+      setup(ctx: any) {
+        ctx.actions.registerAction({ id: 'p:new', handler: () => 'new' });
+        ctx.actions.registerAction({ id: 'p:keep', handler: () => 'v2' });
+        ctx.actions.registerAction({ id: 'p:a', handler: () => 1, input: { type: 'string', pattern: 'x' } });
+      } };
+
+    // The malformed schema must be caught in the BUFFERED registerAction, so
+    // newPlugin.setup throws → swap rejects with PluginSwapError, no commit.
+    await expect(rt.swapPlugin(bad)).rejects.toBeTruthy();
+
+    const ctx = rt.getContext();
+    // 1) Running plugin version still 1.0.0.
+    expect(ctx.introspect.getPluginDefinition('p')?.version).toBe('1.0.0');
+    // 2) The v2-only action never leaked into the live registry.
+    expect(ctx.actions.hasAction('p:new')).toBe(false);
+    // 3) The v1 action still returns its v1 value (not v2's overwrite).
+    await expect(ctx.actions.runAction('p:keep')).resolves.toBe('v1');
+    await rt.shutdown();
+  });
+});
