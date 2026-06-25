@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-25
+
+Enforced Action Contracts (v1) — the Agent-DX foundation. Plugins can optionally attach JSON Schema `input`/`output` documents to actions, and the runtime uses each schema three ways from a single declaration. Purely **additive and opt-in**: every existing plugin and call site behaves identically with no schema present, zero overhead on the hot path when `input` is absent, zero new runtime dependencies. Full suite 918/918. See PR #22.
+
+### Added
+
+- **Enforced input contracts.** An action may declare an `input` JSON Schema; `runAction` validates params **once, before the retry loop**. A violation throws `ContractViolationError` (`code: 'CONTRACT_INPUT_VIOLATION'`) carrying the **full batched** violation set — every bad field in one throw, each with a JSON-pointer `path`, `expected`, `actual`, and the offending sub-schema — and emits a distinct `status:'contract'` trace (separate from `'error'`).
+- **Three explicit contract states**, all surfaced by `introspect()`: `declared` (a schema), `none` (`input: null` — an enforced promise of "no input"; any params rejected), and `undeclared` (field absent — legacy, unenforced).
+- **Self-describing map.** `introspect().getActionDefinition(id)` serves each action's `input`/`output` schema (the *same* object the validator enforces — serve = enforce by identity), `inputState`/`outputState`, and `getContractVocabulary()` returns `supportedKeywords` + `schemaVersion` so an agent knows its vocabulary before authoring a schema.
+- **Closed vocabulary, enforced at registration.** A schema may use only keywords the runtime actually enforces (`type`, `required`, `properties`, `items`, `enum`, `nullable`, `minLength`/`maxLength`, `minimum`/`maximum`); anything else — or a typeless `required`/`properties`/`items` — is rejected loudly at `registerAction`, naming the offending keyword. The runtime never serves or accepts a constraint it won't enforce.
+- **Swap honesty.** The buffered hot-swap path inherits the same guard: a swapped-in plugin declaring a malformed or out-of-vocabulary schema is rejected during `setup`, with full atomic rollback — the running version is left untouched.
+- **New public exports:** `ContractViolationError`, `validateValue`, `validateSchemaDocument`, `SUPPORTED_KEYWORDS`, `SUPPORTED_TYPES`, `SCHEMA_MAX_DEPTH`, `CONTRACT_SCHEMA_VERSION`, and types `JsonSchema`, `Violation`, `ValueCheckResult`, `SchemaCheckResult`. The contract validator is a pure, synchronous, DoS-bounded (depth-capped + cyclic-schema-rejecting) checker.
+
 ## [0.6.2] - 2026-06-20
 
 Hardening release from adversarial testing (39 probes → 8 real defects + 2 test fixes). No API changes; all fixes are bug fixes. Full suite 887/887, stable across repeated runs. See PR #18.
