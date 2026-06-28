@@ -28,6 +28,6 @@ export function slashToContract(
   }
 
   return {
-    input: { type: 'object', properties, required, additionalProperties: false },
+    input: { type: 'object', properties, required },
   };
 }
