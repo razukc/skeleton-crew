@@ -5,6 +5,7 @@ export interface CommandHost {
   uptimeMs: number;
   wsPingMs: number;
   now(): number;
+  roles?: Record<string, { name: string }>;
 }
 export type CommandResult = { text?: string; embed?: Record<string, unknown> };
 
