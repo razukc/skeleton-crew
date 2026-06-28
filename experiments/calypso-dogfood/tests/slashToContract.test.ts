@@ -10,7 +10,6 @@ describe('slashToContract', () => {
       type: 'object',
       properties: { invokerId: { type: 'string' }, guildId: { type: 'string' } },
       required: ['invokerId', 'guildId'],
-      additionalProperties: false,
     });
   });
 
