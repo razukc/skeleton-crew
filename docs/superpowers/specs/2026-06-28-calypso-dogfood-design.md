@@ -54,9 +54,16 @@ catch (err) { logger.error(...) }
 - **Read-only `information` commands** (~6–8): `ping`, `uptime`, `userinfo`, `serverinfo`, `avatar`,
   `roleinfo`, `botinfo`. Pure read logic, no database (CalypsoBot's Prisma dependency is only used by
   config/persistence commands, which are excluded).
-- **One mutating command**: `color` (assigns/changes a member's color role). Provides the dramatic
-  containment + contract story (throws on role-hierarchy violation, rejects bad input) while staying
-  low-stakes — no banning or kicking real users.
+- **One mutating command**: `randomcolor` (changes the invoker's color role: removes existing color
+  roles, adds a randomly-selected one). Provides the dramatic containment + contract story — it performs
+  real `member.roles.remove`/`member.roles.add` mutations, already wraps them in a hand-rolled try/catch
+  (exactly the per-handler discipline SCR replaces by construction), and throws a real role-hierarchy
+  error when the bot's role is below the target — while staying low-stakes (only the invoker's own color
+  role changes; no banning or kicking).
+
+  Note: the sibling `color.ts` command is *display-only* (a paginated list of available colors) and is
+  Prisma-coupled via `client.configs.fetch`; it is **not** the mutator and is out of scope. The real
+  mutation lives in `randomcolor.ts`.
 
 **Out of scope:** any command touching Prisma/config persistence; music/voice (CalypsoBot has none);
 buttons/select-menu components beyond what a carved command needs; tracking upstream CalypsoBot;
@@ -160,9 +167,9 @@ Each maps to a guarantee and runs in **both** modes: A (live, watched) and B (of
 2. **Failed swap rolls back** (atomicity). Swap in a `userinfo` v2 whose `setup` throws. The buffer is
    dropped; `/userinfo` still serves v1. Prove observers never saw a half-swapped state.
 
-3. **Contained crash + bad input** (containment + contracts), using the mutating **`color`** command.
-   (a) Fire `color` with malformed input → `ContractViolationError` at the boundary, typed reply, handler
-   never runs. (b) Swap in a deliberately-buggy `color` that throws inside `run` → runtime contains it,
+3. **Contained crash + bad input** (containment + contracts), using the mutating **`randomcolor`** command.
+   (a) Fire `randomcolor` with malformed input → `ContractViolationError` at the boundary, typed reply,
+   handler never runs. (b) Swap in a deliberately-buggy `randomcolor` that throws inside `run` → runtime contains it,
    the bot and all sibling commands keep serving. Read-only scope would have made "it threw and nothing
    else died" undramatic; the mutating command makes it visible.
 
