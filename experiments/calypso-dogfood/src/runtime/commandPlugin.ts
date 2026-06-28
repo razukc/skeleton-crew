@@ -15,11 +15,11 @@ export interface CarvedCommand {
   run(input: Record<string, unknown>, host: CommandHost): Promise<CommandResult>;
 }
 
-export function makeCommandPlugin(cmd: CarvedCommand, host: CommandHost): PluginDefinition {
+export function makeCommandPlugin(cmd: CarvedCommand, host: CommandHost, version = '1.0.0'): PluginDefinition {
   const { input } = slashToContract(cmd.builder);
   return {
     name: `cmd-${cmd.name}`,
-    version: '1.0.0',
+    version,
     setup(ctx) {
       ctx.actions.registerAction({
         id: `cmd:${cmd.name}`,
