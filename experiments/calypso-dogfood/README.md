@@ -94,6 +94,14 @@ All of these are real and recorded deliberately:
   only. Performance under load is a different experiment
   (`experiments/hotswap-stress`), and nothing here should be read as a
   throughput claim.
+- **Live adapter coerces all option values to strings.** `src/runtime/adapter.ts`
+  (`extractInput`) stringifies every Discord option value, but `slashToContract`
+  derives `number`/`boolean` contract types for integer/number/boolean options. A
+  future command with a non-string option would have its value stringified and
+  then **rejected at the contract boundary in live mode.** Not currently
+  reachable — all carved commands use only string/role options — and it lives in
+  the hand-run `live.ts` path (see section C: NOT YET RUN). Recorded so it is not
+  discovered silently.
 
 ## F. Follow-up decision
 
