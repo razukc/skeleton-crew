@@ -41,12 +41,30 @@ Every demo above is proven **only** as an **offline vitest assertion** (18 tests
 There is no live coverage in CI.
 
 - **Live mode (`npm run live`) is hand-run only.** It requires a real Discord bot
-  token in `config.json` (untracked), is **not** part of CI, and boots the same
-  carved commands over a real gateway via `src/runtime/live.ts`.
-- **Live confirmation: NOT YET RUN.** No live session has been performed and
-  logged. Do not read any of the guarantees above as demonstrated against a real
-  Discord gateway. The value shown by this experiment is **offline correctness on
-  found code** — nothing more.
+  token in `config.json` (untracked), is **not** part of CI, and wires the same
+  carved command path (`extractInput → driver.dispatch → renderReply`) to a real
+  discord.js gateway client via `src/runtime/live.ts`.
+- **Live confirmation: NOT YET RUN — and `live.ts` is an incomplete skeleton.** No
+  live session has been performed. Beyond simply being unrun, the live entrypoint
+  does **not yet** demonstrate the guarantees: an audit (2026-06-28) found three
+  gaps that must be built before a live run proves anything:
+  1. **No slash-command registration.** Nothing PUTs the commands to Discord's
+     REST `applicationCommands`, so `/uptime`, `/roleinfo`, `/randomcolor` don't
+     exist in the guild and `InteractionCreate` never fires — the bot would
+     connect and idle.
+  2. **No hot-swap trigger.** The headline demo (swap a command while the gateway
+     session stays up) needs `driver.swap(...)` to be invoked, but nothing wires
+     it — no SIGUSR2 handler, no stdin/REPL. `Driver.swap` is currently dead code
+     live.
+  3. **`randomcolor` runs on the fake Discord even live.** `live.ts` calls
+     `bootDogfood()` with no `discord` override, so the mutator uses
+     `makeFakeDiscord` and would not touch real roles; `uptime` is likewise frozen
+     (see §E).
+
+  Do not read any guarantee above as demonstrated against a real gateway. The
+  value shown by this experiment is **offline correctness on found code** — nothing
+  more. Building out the three items above is the prerequisite for the live
+  follow-up named in §F.
 - **The "no reconnect" proof is a stand-in.** Demo 1 asserts context-object
   identity (`ctxAfter === ctxBefore`) across a hot-swap. That object identity is
   the *offline stand-in* for "same Discord gateway session, no reconnect." It is
